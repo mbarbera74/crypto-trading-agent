@@ -138,14 +138,14 @@ st.markdown("""
     top: 6px;
     left: 6px;
     z-index: 9999999;
-    background: #1e1e2e;
-    border: 2px solid #e94560;
+    background: #e94560;
+    border: none;
     border-radius: 8px;
-    padding: 4px 10px;
+    padding: 5px 12px;
     cursor: pointer;
     font-size: 18px;
-    color: #e94560;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    color: #ffffff;
+    box-shadow: 0 2px 10px rgba(233,69,96,0.6);
     user-select: none;
     -webkit-tap-highlight-color: transparent;
 ">📊</div>
