@@ -521,7 +521,227 @@ class NewsCalendarProvider:
             except Exception as e:
                 logger.debug(f"Errore news {ticker}: {e}")
 
+        # Aggiungi news da CNN Business
+        cnn_news = self._fetch_cnn_news()
+        for n in cnn_news:
+            if n.title not in seen_titles:
+                seen_titles.add(n.title)
+                all_news.append(n)
+
+        # Aggiungi news da Reuters (breaking news, più rapide)
+        reuters_news = self._fetch_reuters_news()
+        for n in reuters_news:
+            if n.title not in seen_titles:
+                seen_titles.add(n.title)
+                all_news.append(n)
+
         # Ordina per data (più recenti prima)
         all_news.sort(key=lambda x: x.date, reverse=True)
 
-        return all_news[:15]  # Max 15 news
+        return all_news[:40]  # Max 40 news (Yahoo + CNN + Reuters)
+
+    def _fetch_cnn_news(self) -> list[NewsItem]:
+        """
+        Recupera le news market-moving da CNN Business/Economy via scraping diretto.
+        Scrape le pagine: edition.cnn.com/business e edition.cnn.com/economy.
+        """
+        import requests
+        from bs4 import BeautifulSoup
+
+        cnn_news = []
+        seen_urls = set()
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/120.0.0.0 Safari/537.36"
+        }
+
+        # Scraping diretto delle pagine CNN Business ed Economy
+        pages = [
+            "https://edition.cnn.com/business",
+            "https://edition.cnn.com/economy",
+        ]
+
+        # Keyword per filtrare solo news market-moving
+        market_keywords = [
+            "market", "stock", "wall street", "fed", "rate",
+            "inflation", "economy", "recession", "gdp", "jobs",
+            "nasdaq", "dow", "s&p", "earnings", "trade", "tariff",
+            "bitcoin", "crypto", "bank", "treasury", "oil", "gold",
+            "dollar", "investor", "rally", "sell", "crash", "surge",
+            "trump", "congress", "deficit", "debt", "tax",
+            "ai", "tech", "nvidia", "apple", "microsoft", "amazon",
+            "tesla", "meta", "google", "regulation", "dimon",
+            "supreme court", "china", "sanction", "war",
+        ]
+
+        for page_url in pages:
+            try:
+                response = requests.get(page_url, headers=headers, timeout=15)
+                if response.status_code != 200:
+                    continue
+
+                soup = BeautifulSoup(response.text, "html.parser")
+
+                # Trova tutti i link con href che puntano ad articoli
+                links = soup.find_all("a", href=True)
+
+                for link_tag in links:
+                    href = link_tag.get("href", "")
+                    text = link_tag.get_text(strip=True)
+
+                    # Filtra: solo articoli con titolo significativo
+                    if not text or len(text) < 25:
+                        continue
+
+                    # Deve essere un articolo business/economy con data nell'URL (es. /2026/02/24/)
+                    if not any(seg in href for seg in ["/business/", "/economy/", "/markets/"]):
+                        continue
+
+                    # Costruisci URL completo
+                    full_url = href if href.startswith("http") else f"https://edition.cnn.com{href}"
+
+                    # Evita duplicati
+                    if full_url in seen_urls:
+                        continue
+                    seen_urls.add(full_url)
+
+                    # Filtra per rilevanza di mercato
+                    text_lower = text.lower()
+                    is_relevant = any(kw in text_lower for kw in market_keywords)
+
+                    # Estrai data dall'URL se possibile (es. /2026/02/24/)
+                    date_str = datetime.now().strftime("%Y-%m-%d")
+                    import re
+                    date_match = re.search(r"/(\d{4})/(\d{2})/(\d{2})/", full_url)
+                    if date_match:
+                        date_str = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}"
+
+                    # Scarta titoli che sono solo didascalie di immagini o spazzatura
+                    if text.endswith("Images") or text.endswith("REUTERS") or "/" in text[:20]:
+                        continue
+                    if text.startswith("-") or text.startswith("—"):
+                        continue
+
+                    cnn_news.append(NewsItem(
+                        title=text[:200],
+                        summary="",
+                        source="CNN Business" if is_relevant else "CNN",
+                        date=date_str,
+                        url=full_url,
+                    ))
+
+                    if len(cnn_news) >= 15:
+                        break
+
+            except Exception as e:
+                logger.debug(f"Errore scraping CNN {page_url}: {e}")
+
+        logger.info(f"Recuperate {len(cnn_news)} news da CNN Business")
+        return cnn_news
+
+    def _fetch_reuters_news(self) -> list[NewsItem]:
+        """
+        Recupera breaking news da Reuters via Google News RSS.
+        Google News aggrega le breaking Reuters in tempo reale,
+        bypassando il paywall del sito reuters.com.
+        Sezioni: markets, oil, iran, geopolitics, economy.
+        """
+        import requests
+        from bs4 import BeautifulSoup
+
+        reuters_news = []
+        seen_titles = set()
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                          "AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/120.0.0.0 Safari/537.36",
+        }
+
+        # Query Google News RSS per news Reuters su temi market-moving
+        rss_feeds = [
+            (
+                "https://news.google.com/rss/search?q=site:reuters.com+"
+                "markets+OR+oil+OR+iran+OR+fed+OR+economy+OR+stocks"
+                "&hl=en-US&gl=US&ceid=US:en",
+                "Reuters"
+            ),
+            (
+                "https://news.google.com/rss/search?q=site:reuters.com+"
+                "hormuz+OR+opec+OR+missile+OR+war+OR+geopolit+OR+nuclear"
+                "+OR+tariff+OR+sanctions"
+                "&hl=en-US&gl=US&ceid=US:en",
+                "Reuters Breaking"
+            ),
+        ]
+
+        for rss_url, source_label in rss_feeds:
+            try:
+                response = requests.get(rss_url, headers=headers, timeout=15)
+                if response.status_code != 200:
+                    logger.debug(f"Google News RSS: HTTP {response.status_code}")
+                    continue
+
+                soup = BeautifulSoup(response.text, "xml")
+                items = soup.find_all("item")
+
+                for item in items[:20]:
+                    title_tag = item.find("title")
+                    link_tag = item.find("link")
+                    pub_tag = item.find("pubDate")
+
+                    if not title_tag:
+                        continue
+
+                    raw_title = title_tag.get_text(strip=True)
+
+                    # Filtra solo news Reuters (Google News include anche altre fonti)
+                    if "Reuters" not in raw_title and "reuters.com" not in (
+                        link_tag.get_text(strip=True) if link_tag else ""
+                    ):
+                        continue
+
+                    # Pulisci titolo: rimuovi " - Reuters" dal fondo
+                    title = raw_title
+                    if title.endswith(" - Reuters"):
+                        title = title[:-10].strip()
+
+                    if title in seen_titles or len(title) < 15:
+                        continue
+                    seen_titles.add(title)
+
+                    # URL (Google News redirect, ma contiene l'articolo)
+                    url = link_tag.get_text(strip=True) if link_tag else ""
+
+                    # Data di pubblicazione
+                    date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    if pub_tag:
+                        try:
+                            from email.utils import parsedate_to_datetime
+                            dt = parsedate_to_datetime(pub_tag.get_text(strip=True))
+                            date_str = dt.strftime("%Y-%m-%d %H:%M")
+                        except Exception:
+                            pass
+
+                    # Sommario dalla description
+                    desc_tag = item.find("description")
+                    summary = ""
+                    if desc_tag:
+                        desc_soup = BeautifulSoup(desc_tag.get_text(), "html.parser")
+                        summary = desc_soup.get_text(strip=True)[:300]
+
+                    reuters_news.append(NewsItem(
+                        title=title,
+                        summary=summary,
+                        source=source_label,
+                        date=date_str,
+                        url=url,
+                    ))
+
+            except Exception as e:
+                logger.debug(f"Errore Reuters RSS feed: {e}")
+
+        logger.info(f"Recuperate {len(reuters_news)} news da Reuters")
+        return reuters_news

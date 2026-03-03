@@ -11,6 +11,9 @@ venv/
 
 # Data
 data/historical/
+data/ai_reports/
+data/monitor_state.json
+data/drawdown_alert_state.json
 logs/
 
 # ML models

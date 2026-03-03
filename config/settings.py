@@ -65,6 +65,21 @@ class WhatsAppConfig:
 
 
 @dataclass
+class AnthropicConfig:
+    """Configurazione Anthropic (Claude) per analisi AI giornaliera."""
+    api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    enabled: bool = bool(os.getenv("ANTHROPIC_API_KEY", ""))
+
+
+@dataclass
+class GitHubModelsConfig:
+    """Configurazione GitHub Models API per report AI (gratis con GitHub PAT)."""
+    token: str = os.getenv("GITHUB_TOKEN", "")
+    enabled: bool = bool(os.getenv("GITHUB_TOKEN", ""))
+    model: str = os.getenv("AI_REPORT_MODEL", "gpt-4.1")
+
+
+@dataclass
 class AppConfig:
     """Configurazione principale dell'applicazione."""
     exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
@@ -72,6 +87,8 @@ class AppConfig:
     ml: MLConfig = field(default_factory=MLConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
+    anthropic: AnthropicConfig = field(default_factory=AnthropicConfig)
+    github_models: GitHubModelsConfig = field(default_factory=GitHubModelsConfig)
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     data_dir: str = str(PROJECT_ROOT / "data" / "historical")
 

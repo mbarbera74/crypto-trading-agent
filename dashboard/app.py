@@ -15,7 +15,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
+import yfinance as yf
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
 from config.settings import config
 from data.fetcher import DataFetcher
@@ -38,17 +40,227 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Riduci padding superiore di Streamlit
+st.markdown("""
+<style>
+    /* Elimina header Streamlit */
+    header[data-testid="stHeader"] { display: none !important; height: 0 !important; }
+    .stApp > header { display: none !important; }
+    div[data-testid="stToolbar"] { display: none !important; }
+    div[data-testid="stDecoration"] { display: none !important; }
+    
+    /* Elimina tutto il padding/margin superiore */
+    .block-container {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+        max-width: 100% !important;
+    }
+    .stMainBlockContainer {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }
+    .main .block-container {
+        padding-top: 0 !important;
+    }
+    .appview-container {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }
+    section.main > div {
+        padding-top: 0 !important;
+    }
+    .stApp {
+        margin-top: -1rem !important;
+    }
+    
+    /* Nascondi iframe autorefresh */
+    iframe[title="streamlit_autorefresh.st_autorefresh"] {
+        height: 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+    }
+    
+    /* Sidebar padding - allinea con contenuto principale */
+    section[data-testid="stSidebar"] > div {
+        padding-top: 1.5rem !important;
+        margin-top: 0 !important;
+    }
+    section[data-testid="stSidebar"] > div > div {
+        padding-top: 0 !important;
+    }
+    .stSidebar .block-container {
+        padding-top: 0 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Auto-refresh ogni 60 secondi (prezzi sidebar e news ticker)
+st_autorefresh(interval=60_000, limit=None, key="global_refresh")
+
+
+# ============================
+# FUNZIONI CACHE PER DATI LIVE
+# ============================
+# Ticker Yahoo per gli asset del backtest
+_LIVE_TICKERS = {
+    "BTC": {"yahoo": "BTC-USD", "label": "BTC", "currency": "$", "period": "3mo"},
+    "NDX": {"yahoo": "^NDX", "label": "NDX", "currency": "$", "period": "1y"},
+    "SPX": {"yahoo": "^GSPC", "label": "S&P 500", "currency": "$", "period": "1y"},
+    "NQ_FUT": {"yahoo": "NQ=F", "label": "NQ Fut", "currency": "$", "period": "3mo"},
+    "ES_FUT": {"yahoo": "ES=F", "label": "ES Fut", "currency": "$", "period": "3mo"},
+    "VIX": {"yahoo": "^VIX", "label": "VIX", "currency": "", "period": "3mo"},
+    "OIL": {"yahoo": "CL=F", "label": "WTI Oil", "currency": "$", "period": "3mo"},
+    "TNX": {"yahoo": "^TNX", "label": "10Y Yield", "currency": "", "period": "3mo", "suffix": "%"},
+    "SWDA": {"yahoo": "SWDA.MI", "label": "SWDA", "currency": "€", "period": "1y"},
+    "CSNDX": {"yahoo": "CNDX.MI", "label": "CSNDX", "currency": "€", "period": "1y",
+              "fallbacks": ["CSNDX.MI", "SXRV.DE"]},
+}
+
+
+@st.cache_data(ttl=60)
+def _fetch_live_prices():
+    """Recupera prezzi attuali e massimi relativi per gli asset monitorati. Cache 60s."""
+    results = {}
+    for key, info in _LIVE_TICKERS.items():
+        try:
+            data = yf.Ticker(info["yahoo"]).history(period=info["period"])
+            if data.empty and "fallbacks" in info:
+                for fb in info["fallbacks"]:
+                    data = yf.Ticker(fb).history(period=info["period"])
+                    if not data.empty:
+                        break
+            if data.empty or len(data) < 2:
+                continue
+            price = data["Close"].iloc[-1]
+            prev = data["Close"].iloc[-2]
+            high = data["High"].max()
+            chg_1d = (price / prev - 1) * 100
+            drawdown = (price / high - 1) * 100
+            results[key] = {
+                "price": price,
+                "change_1d": chg_1d,
+                "high": high,
+                "drawdown": drawdown,
+                "currency": info["currency"],
+                "label": info["label"],
+                "suffix": info.get("suffix", ""),
+            }
+        except Exception:
+            pass
+    return results
+
+
+@st.cache_data(ttl=300)
+def _fetch_ticker_news():
+    """Recupera headline news market-moving via Google News RSS (Reuters). Cache 5min.
+    Ritorna lista di dict con title e url."""
+    import requests
+    from bs4 import BeautifulSoup
+    headlines = []
+    try:
+        rss_url = (
+            "https://news.google.com/rss/search?q=site:reuters.com+"
+            "markets+OR+oil+OR+iran+OR+fed+OR+stocks+OR+economy+OR+war"
+            "&hl=en-US&gl=US&ceid=US:en"
+        )
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(rss_url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, "xml")
+            for item in soup.find_all("item")[:15]:
+                title = item.find("title")
+                link = item.find("link")
+                pub = item.find("pubDate")
+                if title:
+                    t = title.get_text(strip=True)
+                    if t.endswith(" - Reuters"):
+                        t = t[:-10].strip()
+                    url = link.get_text(strip=True) if link else ""
+                    # Estrai orario pubblicazione
+                    time_str = ""
+                    if pub:
+                        try:
+                            from email.utils import parsedate_to_datetime
+                            dt = parsedate_to_datetime(pub.get_text(strip=True))
+                            # Converti in ora locale (CET/CEST)
+                            import time as _time
+                            offset = _time.timezone if _time.daylight == 0 else _time.altzone
+                            from datetime import timedelta as _td
+                            dt_local = dt + _td(seconds=-offset)
+                            time_str = dt_local.strftime("%H:%M")
+                        except Exception:
+                            pass
+                    if len(t) > 15:
+                        headlines.append({"title": t, "url": url, "time": time_str})
+    except Exception:
+        pass
+    return headlines
+
+# ============================
+# NEWS TICKER SCORREVOLE (top della pagina, refresh 5 min)
+# ============================
+_ticker_headlines = _fetch_ticker_news()
+if _ticker_headlines:
+    # Costruisci HTML con link cliccabili
+    _ticker_items = []
+    for _h in _ticker_headlines:
+        _t = _h["title"]
+        _u = _h.get("url", "")
+        _tm = _h.get("time", "")
+        _time_badge = f'<span style="color:#e94560; font-size:11px;">[{_tm}]</span> ' if _tm else ""
+        if _u:
+            _ticker_items.append(
+                f'{_time_badge}'
+                f'<a href="{_u}" target="_blank" '
+                f'style="color:#e0e0e0; text-decoration:none; '
+                f'border-bottom:1px dotted #e94560;">{_t}</a>'
+            )
+        else:
+            _ticker_items.append(f'{_time_badge}{_t}')
+    _ticker_text = '  <span style="color:#e94560;">⚡</span>  '.join(_ticker_items)
+    st.markdown(f"""
+    <div style="
+        background: linear-gradient(90deg, #1a1a2e, #16213e, #0f3460);
+        padding: 8px 0;
+        overflow: hidden;
+        white-space: nowrap;
+        border-bottom: 2px solid #e94560;
+        margin-bottom: 8px;
+        border-radius: 4px;
+    ">
+        <div style="
+            display: inline-block;
+            animation: marquee 90s linear infinite;
+            color: #e0e0e0;
+            font-size: 13px;
+            font-family: 'Segoe UI', sans-serif;
+        ">
+            📰 <b style="color:#e94560">BREAKING</b> &nbsp;&nbsp;
+            {_ticker_text}
+            &nbsp;&nbsp;&nbsp;&nbsp; 📰 <b style="color:#e94560">BREAKING</b> &nbsp;&nbsp;
+            {_ticker_text}
+        </div>
+    </div>
+    <style>
+        @keyframes marquee {{
+            0%   {{ transform: translateX(0%); }}
+            100% {{ transform: translateX(-50%); }}
+        }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # ============================
 # NAVIGAZIONE TABS
 # ============================
-tab_futures, tab_monitor, tab_markets, tab_news, tab_crypto, tab_cape, tab_liquidity = st.tabs([
+tab_news, tab_futures, tab_monitor, tab_markets, tab_ai_report, tab_cape, tab_liquidity, tab_crypto = st.tabs([
+    "📰 News & Calendario",
     "📡 Futures & Apertura",
     "📱 Segnali Accumulo",
     "🌍 NDX / SWDA.MI / CSNDX",
-    "📰 News & Calendario",
-    "🪙 Crypto Trading",
+    "🤖 AI Daily Report",
     "📊 CAPE per Asset",
     "💧 Liquidità",
+    "🪙 Crypto Trading",
 ])
 
 # ============================
@@ -70,6 +282,67 @@ ASSET_CONFIG = {
 }
 
 with st.sidebar:
+    # ── PREZZI LIVE (refresh ogni 60s) ──
+    st.markdown("### 📊 Prezzi Live")
+    _live = _fetch_live_prices()
+    if _live:
+        for _k, _v in _live.items():
+            _color = "#00ff88" if _v["change_1d"] >= 0 else "#ff4444"
+            _dd_color = "#ff8800" if _v["drawdown"] < -5 else ("#ffcc00" if _v["drawdown"] < -2 else "#aaaaaa")
+            _arrow = "▲" if _v["change_1d"] >= 0 else "▼"
+            st.markdown(f"""
+            <div style="
+                background: #1e1e2e;
+                border-radius: 8px;
+                padding: 8px 12px;
+                margin-bottom: 6px;
+                border-left: 3px solid {_color};
+            ">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:bold; font-size:14px; color:#e0e0e0;">
+                        {_v['label']}
+                    </span>
+                    <span style="font-size:15px; font-weight:bold; color:{_color};">
+                        {_v['currency']}{_v['price']:,.2f}{_v.get('suffix', '')}
+                    </span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; margin-top:2px;">
+                    <span style="color:{_color};">{_arrow} {_v['change_1d']:+.2f}%</span>
+                    <span style="color:{_dd_color};">da max: {_v['drawdown']:+.1f}%</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        _now = datetime.now().strftime("%H:%M:%S")
+        st.caption(f"🔄 Aggiornato: {_now}")
+
+        # ── DRAWDOWN ALERTS (check ad ogni refresh) ──
+        from engine.drawdown_alerts import check_drawdown_alerts, DRAWDOWN_RULES
+        _alerts = check_drawdown_alerts(notify=True)
+        if _alerts:
+            for _a in _alerts:
+                st.markdown(f"""
+                <div style="
+                    background: #3d0000;
+                    border: 1px solid #ff4444;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    margin-top: 4px;
+                ">
+                    <span style="color:#ff4444; font-weight:bold; font-size:12px;">
+                        🚨 {_a['asset']} {_a['drawdown_pct']:.1f}% dal max
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            # Mostra soglie monitorate
+            _rules_text = " | ".join(
+                f"{k} ({r['threshold_pct']:.0f}%)" for k, r in DRAWDOWN_RULES.items()
+            )
+            st.caption(f"🔔 Alert attivi: {_rules_text}")
+    else:
+        st.caption("⏳ Caricamento prezzi...")
+    st.divider()
+
     st.header("⚙️ Configurazione")
 
     # Asset selector per backtest
@@ -1219,7 +1492,94 @@ with tab_news:
 
     calendar = st.session_state.get("news_calendar")
     if calendar:
+        # ── NEWS (in testa) ──
+        st.header("📰 Ultime News di Mercato")
+        st.caption("Fonti: Reuters (breaking), Yahoo Finance, CNN Business")
+        if calendar.news:
+            # Filtro: solo news importanti (market-moving) di default
+            important_keywords = [
+                "fed", "fomc", "interest rate", "inflation", "cpi", "gdp",
+                "tariff", "trade war", "recession", "crash", "rally", "surge",
+                "earnings", "layoff", "bankruptcy", "merger", "acquisition",
+                "nvidia", "apple", "microsoft", "amazon", "google", "meta", "tesla",
+                "nasdaq", "s&p", "dow", "market", "economy", "jobs", "unemployment",
+                "bank", "treasury", "bond", "yield", "dollar", "euro",
+                "war", "sanctions", "crisis", "default", "stimulus",
+                "ai", "regulation", "antitrust", "supreme court",
+                "iran", "hormuz", "oil", "opec", "missile", "attack", "strike",
+                "israel", "geopolit", "nuclear", "gulf", "commodity", "gold",
+                "bitcoin", "crypto", "etf", "futures", "volatil", "vix",
+                "china", "taiwan", "russia", "ukraine", "nato",
+            ]
+
+            # Filtri utente
+            col_kw, col_src, col_all = st.columns([3, 2, 1])
+            with col_kw:
+                keyword_filter = st.text_input(
+                    "🔍 Filtra per keyword",
+                    value="",
+                    placeholder="Es: iran, oil, hormuz, bitcoin...",
+                    key="news_keyword_filter",
+                )
+            with col_src:
+                source_filter = st.multiselect(
+                    "📡 Fonte",
+                    options=["Reuters", "Yahoo Finance", "CNN", "Tutte"],
+                    default=["Tutte"],
+                    key="news_source_filter",
+                )
+            with col_all:
+                st.write("")  # spacer
+                show_all = st.checkbox("Mostra tutte", value=False, key="news_filter")
+
+            # Parsing keyword utente (virgola o spazio)
+            user_keywords = []
+            if keyword_filter.strip():
+                user_keywords = [k.strip().lower() for k in keyword_filter.replace(",", " ").split() if k.strip()]
+
+            for n in calendar.news:
+                text_lower = (n.title + " " + n.summary).lower()
+                is_important = any(kw in text_lower for kw in important_keywords)
+
+                # Filtro keyword utente
+                if user_keywords:
+                    if not any(kw in text_lower for kw in user_keywords):
+                        continue
+                elif not show_all and not is_important:
+                    continue
+
+                # Filtro fonte
+                if "Tutte" not in source_filter:
+                    source_match = False
+                    for sf in source_filter:
+                        if sf.lower() in n.source.lower():
+                            source_match = True
+                            break
+                    if not source_match:
+                        continue
+
+                marker = "🔴" if is_important else "📄"
+                source_badge = ""
+                if "Reuters" in n.source:
+                    source_badge = " ⚡"
+                elif "CNN" in n.source:
+                    source_badge = " 📺"
+                with st.expander(f"{marker}{source_badge} {n.title}", expanded=False):
+                    if is_important:
+                        st.markdown("**⚡ Market-moving**")
+                    if "Reuters" in n.source:
+                        st.markdown(f"⚡ **Fonte: {n.source}** (breaking)")
+                    elif "CNN" in n.source:
+                        st.markdown("📺 **Fonte: CNN Business**")
+                    st.caption(f"{n.source} | {n.date}")
+                    st.write(n.summary)
+                    if n.url:
+                        st.markdown(f"[🔗 Leggi articolo completo]({n.url})")
+        else:
+            st.info("Nessuna news disponibile")
+
         # ── PROSSIMI EARNINGS ──
+        st.divider()
         st.header("📅 Prossimi Utili Trimestrali")
         if calendar.upcoming_earnings:
             upcoming_data = []
@@ -1380,46 +1740,447 @@ with tab_news:
         else:
             st.warning("Calendario economico non disponibile (investpy non installato o errore di rete)")
 
-        # ── NEWS ──
-        st.divider()
-        st.header("📰 Ultime News di Mercato")
-        if calendar.news:
-            # Filtro: solo news importanti (market-moving) di default
-            important_keywords = [
-                "fed", "fomc", "interest rate", "inflation", "cpi", "gdp",
-                "tariff", "trade war", "recession", "crash", "rally", "surge",
-                "earnings", "layoff", "bankruptcy", "merger", "acquisition",
-                "nvidia", "apple", "microsoft", "amazon", "google", "meta", "tesla",
-                "nasdaq", "s&p", "dow", "market", "economy", "jobs", "unemployment",
-                "bank", "treasury", "bond", "yield", "dollar", "euro",
-                "war", "sanctions", "crisis", "default", "stimulus",
-                "ai", "regulation", "antitrust", "supreme court",
-            ]
-            show_all = st.checkbox("📋 Mostra tutte le news (non solo market-moving)", value=False, key="news_filter")
-
-            for n in calendar.news:
-                text_lower = (n.title + " " + n.summary).lower()
-                is_important = any(kw in text_lower for kw in important_keywords)
-
-                if not show_all and not is_important:
-                    continue
-
-                marker = "🔴" if is_important else "📄"
-                with st.expander(f"{marker} {n.title}", expanded=False):
-                    if is_important:
-                        st.markdown("**⚡ Market-moving**")
-                    st.caption(f"{n.source} | {n.date}")
-                    st.write(n.summary)
-                    if n.url:
-                        st.markdown(f"[🔗 Leggi articolo completo]({n.url})")
-        else:
-            st.info("Nessuna news disponibile")
-
         st.caption(f"Ultimo aggiornamento: {calendar.last_updated}")
+
+
+# ============================
+# TAB: AI DAILY REPORT
+# ============================
+with tab_ai_report:
+    st.title("🤖 AI Reports — Analisi Intelligente")
+
+    # Configurazione API Key
+    from config.settings import config as app_cfg
+
+    ai_key = app_cfg.github_models.token or app_cfg.anthropic.api_key
+    ai_provider = "GitHub Models (GPT-4.1)" if app_cfg.github_models.token else "Anthropic (Claude)"
+
+    if not ai_key:
+        st.warning(
+            "⚠️ **Token non configurato.** "
+            "Aggiungi `GITHUB_TOKEN=ghp_...` nel file `.env` per abilitare i report AI (gratis).\n\n"
+            "In alternativa: `ANTHROPIC_API_KEY=sk-ant-...` (richiede crediti)."
+        )
+        ai_key_input = st.text_input(
+            "Oppure inserisci qui un GitHub PAT o API key Anthropic (temporanea):",
+            type="password",
+            key="ai_key_temp",
+        )
+        if ai_key_input:
+            ai_key = ai_key_input
+            ai_provider = "GitHub Models (GPT-4.1)" if ai_key_input.startswith("ghp_") else "Anthropic (Claude)"
+
+    if ai_key:
+        from analysis.ai_daily_report import (
+            generate_report, get_cached_report, list_available_reports,
+            generate_freeform_report, list_freeform_reports, get_freeform_report,
+            delete_report,
+        )
+        from analysis.ai_report_definitions import AI_REPORTS
+
+        st.caption(f"🧠 Provider: **{ai_provider}**")
+
+        ai_sub_preset, ai_sub_free, ai_sub_archive = st.tabs([
+            "📋 Report Preimpostati",
+            "✍️ Prompt Libero",
+            "📚 Archivio Report",
+        ])
+
+        # ════════════════════════════════════════════════════════════
+        # SUB-TAB 1: Report Preimpostati
+        # ════════════════════════════════════════════════════════════
+        with ai_sub_preset:
+            st.markdown("Seleziona un report preimpostato e genera l'analisi. I report vengono salvati automaticamente.")
+
+            from analysis.ai_daily_report import (
+                load_custom_presets, delete_custom_preset, generate_custom_preset_report,
+            )
+            custom_presets = load_custom_presets()
+
+            # Combina report built-in e custom
+            report_options = {v["id"]: f"{v['icon']} {v['name']}" for v in AI_REPORTS.values()}
+            report_descriptions = {v["id"]: v["description"] for v in AI_REPORTS.values()}
+
+            # Aggiungi preset personalizzati
+            for cp_id, cp in custom_presets.items():
+                full_id = f"custom_{cp_id}"
+                report_options[full_id] = f"{cp.get('icon', '📝')} {cp['name']} ✦"
+                report_descriptions[full_id] = cp.get("description", cp["name"])
+
+            col_sel, col_info = st.columns([2, 3])
+            with col_sel:
+                selected_report_id = st.selectbox(
+                    "📋 Seleziona Report",
+                    options=list(report_options.keys()),
+                    format_func=lambda x: report_options[x],
+                    key="ai_report_selector",
+                )
+            with col_info:
+                st.info(f"ℹ️ {report_descriptions[selected_report_id]}")
+                # Se è un preset custom, mostra opzione per eliminarlo
+                if selected_report_id.startswith("custom_"):
+                    cp_key = selected_report_id.replace("custom_", "", 1)
+                    if st.button("🗑️ Elimina questo preset", key="del_custom_preset"):
+                        delete_custom_preset(cp_key)
+                        st.success("Preset eliminato.")
+                        st.rerun()
+
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                run_ai_report = st.button("🤖 Genera Report", type="primary", use_container_width=True)
+            with col_btn2:
+                force_regen = st.button("🔄 Rigenera (ignora cache)", use_container_width=True)
+
+            # Storico: selectbox + bottone esplicito "Carica"
+            col_hist, col_load = st.columns([3, 1])
+            with col_hist:
+                available = list_available_reports(selected_report_id)
+                if available:
+                    selected_date = st.selectbox(
+                        "📅 Storico",
+                        options=available,
+                        index=0,
+                        key="ai_report_date",
+                    )
+                else:
+                    selected_date = None
+                    st.caption("Nessun report salvato")
+            with col_load:
+                st.write("")  # spacer
+                load_from_history = st.button("📂 Carica", use_container_width=True,
+                                              disabled=selected_date is None)
+
+            st.divider()
+            run_all = st.button("🚀 Genera TUTTI i Report di Oggi", use_container_width=True)
+
+            # Genera o mostra report
+            report_text = None
+            _report_session_key = f"ai_report_last_{selected_report_id}"
+
+            if run_all:
+                progress_bar = st.progress(0)
+                total = len(AI_REPORTS)
+                for idx, (rid, rdef) in enumerate(AI_REPORTS.items()):
+                    with st.spinner(f"Generazione {rdef['icon']} {rdef['name']}..."):
+                        result = generate_report(ai_key, report_id=rid, force=False)
+                        if result:
+                            st.success(f"✅ {rdef['icon']} {rdef['name']} — generato e salvato!")
+                        else:
+                            st.error(f"❌ {rdef['icon']} {rdef['name']} — errore")
+                    progress_bar.progress((idx + 1) / total)
+                report_text = get_cached_report(selected_report_id)
+                if report_text:
+                    st.session_state[_report_session_key] = report_text
+
+            elif run_ai_report or force_regen:
+                with st.spinner("🧠 Generazione report in corso... (30-90 secondi)"):
+                    if selected_report_id.startswith("custom_"):
+                        cp_key = selected_report_id.replace("custom_", "", 1)
+                        report_text = generate_custom_preset_report(ai_key, preset_id=cp_key, force=force_regen)
+                    else:
+                        report_text = generate_report(ai_key, report_id=selected_report_id, force=force_regen)
+                if report_text:
+                    st.success("✅ Report generato e salvato!")
+                    st.session_state[_report_session_key] = report_text
+                else:
+                    st.error("Errore nella generazione. Controlla il token e la connessione.")
+
+            elif load_from_history and selected_date:
+                # Carica da storico SOLO quando l'utente clicca "Carica"
+                cached = get_cached_report(selected_report_id, selected_date)
+                if cached:
+                    report_text = cached
+                    st.session_state[_report_session_key] = report_text
+
+            # Se nulla sopra ha prodotto un report, mostra l'ultimo generato in sessione
+            if report_text is None and _report_session_key in st.session_state:
+                report_text = st.session_state[_report_session_key]
+
+            # Ultimo fallback: cache di oggi
+            if report_text is None:
+                from datetime import datetime as dt_cls
+                today_cached = get_cached_report(selected_report_id, dt_cls.now().strftime("%Y-%m-%d"))
+                if today_cached:
+                    report_text = today_cached
+                    st.caption("📄 Dalla cache di oggi")
+
+            if report_text:
+                st.divider()
+                st.markdown(report_text)
+                st.divider()
+                from datetime import datetime as dt_download
+                st.download_button(
+                    label="📥 Scarica Report (Markdown)",
+                    data=report_text,
+                    file_name=f"{selected_report_id}_{dt_download.now().strftime('%Y-%m-%d')}.md",
+                    mime="text/markdown",
+                )
+            else:
+                st.info("Seleziona un report e clicca **'Genera Report'**.")
+
+            # Badge di stato report di oggi
+            st.divider()
+            st.subheader("📊 Stato Report di Oggi")
+            from datetime import datetime as dt_status
+            today_str = dt_status.now().strftime("%Y-%m-%d")
+            status_cols = st.columns(len(AI_REPORTS))
+            for i, (rid, rdef) in enumerate(AI_REPORTS.items()):
+                with status_cols[i]:
+                    cached = get_cached_report(rid, today_str)
+                    if cached:
+                        st.success(f"{rdef['icon']}\n✅")
+                        st.caption(rdef['name'][:15])
+                    else:
+                        st.warning(f"{rdef['icon']}\n⏳")
+                        st.caption(rdef['name'][:15])
+
+        # ════════════════════════════════════════════════════════════
+        # SUB-TAB 2: Prompt Libero
+        # ════════════════════════════════════════════════════════════
+        with ai_sub_free:
+            st.markdown(
+                "Scrivi una domanda o richiesta di analisi personalizzata. "
+                "L'AI utilizzerà i dati di mercato aggiornati come contesto."
+            )
+
+            # Suggerimenti rapidi
+            st.caption("💡 **Esempi di prompt:**")
+            example_cols = st.columns(3)
+            with example_cols[0]:
+                if st.button("📊 Analisi settore tech", use_container_width=True, key="ex1"):
+                    st.session_state["freeform_prompt"] = (
+                        "Analizza il settore tecnologico USA: NVIDIA, Apple, Microsoft, Meta. "
+                        "Valutazioni attuali, rischi e opportunità per le prossime settimane."
+                    )
+            with example_cols[1]:
+                if st.button("🌍 Rischi geopolitici", use_container_width=True, key="ex2"):
+                    st.session_state["freeform_prompt"] = (
+                        "Quali sono i principali rischi geopolitici che possono impattare i mercati "
+                        "nelle prossime settimane? Come posizionarsi di conseguenza?"
+                    )
+            with example_cols[2]:
+                if st.button("💰 Strategia PAC", use_container_width=True, key="ex3"):
+                    st.session_state["freeform_prompt"] = (
+                        "Ho un PAC mensile su SWDA.MI e CSNDX. Dato il contesto attuale, "
+                        "dovrei aumentare, ridurre o mantenere le rate? Analisi dettagliata."
+                    )
+
+            # Area di testo per il prompt
+            user_prompt = st.text_area(
+                "✍️ Scrivi il tuo prompt",
+                value=st.session_state.get("freeform_prompt", ""),
+                height=150,
+                placeholder="Es: Analizza le prospettive di Bitcoin per il Q2 2026 considerando il ciclo halving, la politica monetaria Fed e i flussi ETF...",
+                key="freeform_input",
+            )
+
+            col_opt1, col_opt2 = st.columns(2)
+            with col_opt1:
+                include_market = st.checkbox(
+                    "📈 Includi dati di mercato aggiornati come contesto",
+                    value=True,
+                    key="freeform_include_market",
+                )
+            with col_opt2:
+                save_report = st.checkbox(
+                    "💾 Salva il report nell'archivio",
+                    value=False,
+                    key="freeform_save",
+                )
+
+            col_gen, col_save_preset, col_clear = st.columns([3, 2, 1])
+            with col_gen:
+                generate_free = st.button(
+                    "🚀 Genera Analisi",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=not user_prompt.strip(),
+                )
+            with col_save_preset:
+                save_as_preset = st.button(
+                    "📌 Salva come Preimpostato",
+                    use_container_width=True,
+                    disabled=not user_prompt.strip(),
+                )
+            with col_clear:
+                if st.button("🗑️ Pulisci", use_container_width=True):
+                    st.session_state["freeform_prompt"] = ""
+                    st.rerun()
+
+            # ── Dialog per salvare come preimpostato ──
+            if save_as_preset and user_prompt.strip():
+                from analysis.ai_daily_report import save_custom_preset
+                import re as _re
+                st.divider()
+                st.markdown("### 📌 Salva come Report Preimpostato")
+                st.caption("Questo prompt sarà disponibile nella lista dei report preimpostati.")
+
+                preset_name = st.text_input(
+                    "Nome del report",
+                    value="",
+                    placeholder="Es: Analisi Settore Tech",
+                    key="preset_name_input",
+                )
+                preset_icon = st.selectbox(
+                    "Icona",
+                    options=["📊", "🔍", "💡", "🎯", "🛡️", "📈", "🌍", "💰", "⚡", "🧠", "🏦", "🔮"],
+                    index=0,
+                    key="preset_icon_input",
+                )
+                preset_desc = st.text_input(
+                    "Descrizione breve",
+                    value="",
+                    placeholder="Es: Analisi settimanale del settore tecnologico USA",
+                    key="preset_desc_input",
+                )
+                preset_market = st.checkbox(
+                    "Includi dati di mercato come contesto",
+                    value=include_market,
+                    key="preset_market_input",
+                )
+
+                if st.button("✅ Conferma Salvataggio", type="primary", key="confirm_save_preset"):
+                    if preset_name.strip():
+                        # Genera ID slug dal nome
+                        slug = _re.sub(r"[^a-z0-9]+", "_", preset_name.strip().lower()).strip("_")
+                        if save_custom_preset(
+                            preset_id=slug,
+                            name=preset_name.strip(),
+                            icon=preset_icon,
+                            description=preset_desc.strip() or preset_name.strip(),
+                            prompt_template=user_prompt.strip(),
+                            include_market_data=preset_market,
+                        ):
+                            st.success(f"✅ Preset **{preset_icon} {preset_name}** salvato! Lo trovi nella tab 'Report Preimpostati'.")
+                        else:
+                            st.error("Errore nel salvataggio.")
+                    else:
+                        st.warning("Inserisci un nome per il report.")
+
+            # Generazione
+            if generate_free and user_prompt.strip():
+                with st.spinner("🧠 Generazione in corso... (30-90 secondi)"):
+                    free_result = generate_freeform_report(
+                        api_key=ai_key,
+                        user_prompt=user_prompt.strip(),
+                        include_market_data=include_market,
+                        save=save_report,
+                    )
+                if free_result:
+                    st.success("✅ Report generato!" + (" E salvato nell'archivio." if save_report else ""))
+                    st.divider()
+                    st.markdown("### 📝 Risposta AI")
+                    st.markdown(free_result)
+                    st.divider()
+                    from datetime import datetime as dt_free_dl
+                    st.download_button(
+                        label="📥 Scarica (Markdown)",
+                        data=free_result,
+                        file_name=f"analisi_custom_{dt_free_dl.now().strftime('%Y-%m-%d_%H%M')}.md",
+                        mime="text/markdown",
+                        key="dl_freeform",
+                    )
+                else:
+                    st.error("❌ Errore nella generazione. Controlla il token e la connessione.")
+
+        # ════════════════════════════════════════════════════════════
+        # SUB-TAB 3: Archivio Report
+        # ════════════════════════════════════════════════════════════
+        with ai_sub_archive:
+            st.markdown("Tutti i report salvati — preimpostati e personalizzati.")
+
+            archive_tab_preset, archive_tab_free = st.tabs(["📋 Preimpostati", "✍️ Personalizzati"])
+
+            # ── Archivio report preimpostati ──
+            with archive_tab_preset:
+                all_dates = list_available_reports()
+                if not all_dates:
+                    st.info("Nessun report preimpostato salvato. Genera il primo dalla tab 'Report Preimpostati'.")
+                else:
+                    arch_date = st.selectbox(
+                        "📅 Seleziona data",
+                        options=all_dates,
+                        index=0,
+                        key="archive_date",
+                    )
+                    # Mostra quali report sono disponibili per quella data
+                    arch_cols = st.columns(len(AI_REPORTS))
+                    for i, (rid, rdef) in enumerate(AI_REPORTS.items()):
+                        with arch_cols[i]:
+                            cached = get_cached_report(rid, arch_date)
+                            if cached:
+                                if st.button(f"{rdef['icon']} {rdef['name'][:12]}", key=f"arch_{rid}_{arch_date}",
+                                             use_container_width=True):
+                                    st.session_state["archive_view_report"] = cached
+                                    st.session_state["archive_view_title"] = f"{rdef['icon']} {rdef['name']} — {arch_date}"
+                            else:
+                                st.button(f"⏳ {rdef['name'][:12]}", key=f"arch_{rid}_{arch_date}",
+                                          use_container_width=True, disabled=True)
+
+                    if "archive_view_report" in st.session_state and st.session_state["archive_view_report"]:
+                        st.divider()
+                        st.subheader(st.session_state.get("archive_view_title", "Report"))
+                        st.markdown(st.session_state["archive_view_report"])
+                        st.download_button(
+                            label="📥 Scarica",
+                            data=st.session_state["archive_view_report"],
+                            file_name=f"report_{arch_date}.md",
+                            mime="text/markdown",
+                            key="dl_archive_preset",
+                        )
+
+            # ── Archivio report freeform ──
+            with archive_tab_free:
+                freeform_list = list_freeform_reports()
+                if not freeform_list:
+                    st.info("Nessun report personalizzato salvato. Scrivi il primo dalla tab 'Prompt Libero'.")
+                else:
+                    st.caption(f"📝 {len(freeform_list)} report personalizzati salvati")
+
+                    for idx, fr in enumerate(freeform_list):
+                        prompt_preview = fr["prompt"][:120] + ("..." if len(fr["prompt"]) > 120 else "")
+                        gen_date = fr.get("generated_at", fr["date"])
+                        if "T" in gen_date:
+                            try:
+                                from datetime import datetime as dt_parse
+                                dt_obj = dt_parse.fromisoformat(gen_date)
+                                gen_date = dt_obj.strftime("%d/%m/%Y %H:%M")
+                            except Exception:
+                                pass
+
+                        with st.expander(f"📝 {gen_date} — _{prompt_preview}_", expanded=False):
+                            st.markdown(f"**Prompt completo:** {fr['prompt']}")
+                            st.caption(f"Data: {fr['date']} | File: {fr['file'].split('ai_reports')[-1]}")
+
+                            col_view, col_dl, col_del = st.columns([2, 2, 1])
+                            with col_view:
+                                if st.button("👁️ Visualizza", key=f"view_fr_{idx}", use_container_width=True):
+                                    content = get_freeform_report(fr["file"])
+                                    if content:
+                                        st.session_state[f"freeform_view_{idx}"] = content
+                            with col_dl:
+                                content_dl = get_freeform_report(fr["file"])
+                                if content_dl:
+                                    st.download_button(
+                                        label="📥 Scarica",
+                                        data=content_dl,
+                                        file_name=f"analisi_{fr['date']}.md",
+                                        mime="text/markdown",
+                                        key=f"dl_fr_{idx}",
+                                        use_container_width=True,
+                                    )
+                            with col_del:
+                                if st.button("🗑️", key=f"del_fr_{idx}", use_container_width=True):
+                                    delete_report(fr["file"])
+                                    st.rerun()
+
+                            if f"freeform_view_{idx}" in st.session_state:
+                                st.divider()
+                                st.markdown(st.session_state[f"freeform_view_{idx}"])
 
 
 # ============================
 # FOOTER
 # ============================
 st.divider()
-st.caption("Trading Agent Multi-Asset | Crypto + NDX + SWDA.MI + CSNDX + CAPE + Liquidità + Segnali + News")
+st.caption("Trading Agent Multi-Asset | Crypto + NDX + SWDA.MI + CSNDX + CAPE + Liquidità + Segnali + News + AI Report + CNN")
