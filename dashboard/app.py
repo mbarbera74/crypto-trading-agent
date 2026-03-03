@@ -91,6 +91,27 @@ st.markdown("""
     .stSidebar .block-container {
         padding-top: 0 !important;
     }
+    
+    /* Bottone sidebar sempre visibile su mobile */
+    button[data-testid="stSidebarCollapsedControl"],
+    button[kind="headerNoPadding"],
+    [data-testid="collapsedControl"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: fixed !important;
+        top: 8px !important;
+        left: 8px !important;
+        z-index: 999999 !important;
+        background: #1e1e2e !important;
+        border: 2px solid #e94560 !important;
+        border-radius: 8px !important;
+        padding: 6px 10px !important;
+        color: #e0e0e0 !important;
+        font-size: 20px !important;
+        cursor: pointer !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
