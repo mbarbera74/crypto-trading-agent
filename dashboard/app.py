@@ -259,27 +259,37 @@ if _live_main:
             f'<span style="color:{_dd_c}; font-size:10px;">({_v["drawdown"]:+.1f}%)</span>'
             f'</span>'
         )
-    _prices_html = " ".join(_price_items)
+    _prices_html = " &nbsp;·&nbsp; ".join(_price_items)
     _now_ts = datetime.now().strftime("%H:%M")
     st.markdown(f"""
     <div style="
         background: #0d1117;
-        padding: 6px 10px;
+        padding: 6px 0;
         border-radius: 4px;
         margin-bottom: 4px;
-        overflow-x: auto;
+        overflow: hidden;
         white-space: nowrap;
         font-size: 12px;
         color: #aaa;
         border: 1px solid #21262d;
-        display: flex;
-        align-items: center;
-        gap: 2px;
     ">
-        <span style="color:#e94560; font-weight:bold; margin-right:6px;">📊 LIVE</span>
-        {_prices_html}
-        <span style="color:#555; margin-left:8px; font-size:10px;">⏱{_now_ts}</span>
+        <div style="
+            display: inline-block;
+            animation: priceMarquee 30s linear infinite;
+        ">
+            <span style="color:#e94560; font-weight:bold; margin:0 8px;">📊 LIVE ⏱{_now_ts}</span>
+            {_prices_html}
+            &nbsp;&nbsp;&nbsp;&nbsp;
+            <span style="color:#e94560; font-weight:bold; margin:0 8px;">📊</span>
+            {_prices_html}
+        </div>
     </div>
+    <style>
+        @keyframes priceMarquee {{
+            0%   {{ transform: translateX(0%); }}
+            100% {{ transform: translateX(-50%); }}
+        }}
+    </style>
     """, unsafe_allow_html=True)
 
 # ============================
