@@ -37,7 +37,7 @@ st.set_page_config(
     page_title="Trading Agent - Multi Asset",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="auto",
+    initial_sidebar_state="expanded",
 )
 
 # Riduci padding superiore di Streamlit
