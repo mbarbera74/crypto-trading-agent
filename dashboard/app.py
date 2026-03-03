@@ -112,7 +112,43 @@ st.markdown("""
         cursor: pointer !important;
         box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
     }
+    
+    /* Forza visibilità di QUALSIASI bottone collapse sidebar */
+    [data-testid="stSidebar"][aria-expanded="false"] ~ div button,
+    .stApp [data-testid="stSidebarCollapsedControl"] {
+        display: block !important;
+        visibility: visible !important;
+    }
 </style>
+""", unsafe_allow_html=True)
+
+# Bottone fisso HTML per riaprire sidebar (fallback per mobile)
+st.markdown("""
+<div id="sidebar-toggle" onclick="
+    var btn = document.querySelector('[data-testid=stSidebarCollapsedControl]') 
+           || document.querySelector('button[kind=headerNoPadding]')
+           || document.querySelector('[data-testid=collapsedControl]');
+    if (btn) { btn.click(); }
+    else {
+        var sidebar = document.querySelector('[data-testid=stSidebar]');
+        if (sidebar) { sidebar.style.display = 'block'; sidebar.style.transform = 'none'; }
+    }
+" style="
+    position: fixed;
+    top: 6px;
+    left: 6px;
+    z-index: 9999999;
+    background: #1e1e2e;
+    border: 2px solid #e94560;
+    border-radius: 8px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 18px;
+    color: #e94560;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+">📊</div>
 """, unsafe_allow_html=True)
 
 # Auto-refresh ogni 60 secondi (prezzi sidebar e news ticker)
