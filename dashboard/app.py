@@ -103,8 +103,8 @@ _LIVE_TICKERS = {
     "OIL": {"yahoo": "CL=F", "label": "WTI Oil", "currency": "$", "period": "3mo"},
     "TNX": {"yahoo": "^TNX", "label": "10Y Yield", "currency": "", "period": "3mo", "suffix": "%"},
     "SWDA": {"yahoo": "SWDA.MI", "label": "SWDA", "currency": "€", "period": "1y"},
-    "CSNDX": {"yahoo": "CNDX.MI", "label": "CSNDX", "currency": "€", "period": "1y",
-              "fallbacks": ["CSNDX.MI", "SXRV.DE"]},
+    "CSNDX": {"yahoo": "CSNDX.MI", "label": "CSNDX", "currency": "€", "period": "1y",
+              "fallbacks": ["SXRV.DE", "CNDX.L"]},
 }
 
 
