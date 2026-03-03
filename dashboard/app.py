@@ -241,6 +241,48 @@ if _ticker_headlines:
     """, unsafe_allow_html=True)
 
 # ============================
+# BARRA PREZZI LIVE (pannello principale)
+# ============================
+_live_main = _fetch_live_prices()
+if _live_main:
+    _price_items = []
+    for _k, _v in _live_main.items():
+        _c = "#00ff88" if _v["change_1d"] >= 0 else "#ff4444"
+        _a = "▲" if _v["change_1d"] >= 0 else "▼"
+        _s = _v.get("suffix", "")
+        _dd_c = "#ff8800" if _v["drawdown"] < -5 else ("#ffcc00" if _v["drawdown"] < -2 else "#888")
+        _price_items.append(
+            f'<span style="margin:0 6px; white-space:nowrap;">'
+            f'<b style="color:#ccc;">{_v["label"]}</b> '
+            f'<span style="color:{_c}; font-weight:bold;">{_v["currency"]}{_v["price"]:,.2f}{_s}</span> '
+            f'<span style="color:{_c}; font-size:10px;">{_a}{_v["change_1d"]:+.1f}%</span> '
+            f'<span style="color:{_dd_c}; font-size:10px;">({_v["drawdown"]:+.1f}%)</span>'
+            f'</span>'
+        )
+    _prices_html = " ".join(_price_items)
+    _now_ts = datetime.now().strftime("%H:%M")
+    st.markdown(f"""
+    <div style="
+        background: #0d1117;
+        padding: 6px 10px;
+        border-radius: 4px;
+        margin-bottom: 4px;
+        overflow-x: auto;
+        white-space: nowrap;
+        font-size: 12px;
+        color: #aaa;
+        border: 1px solid #21262d;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    ">
+        <span style="color:#e94560; font-weight:bold; margin-right:6px;">📊 LIVE</span>
+        {_prices_html}
+        <span style="color:#555; margin-left:8px; font-size:10px;">⏱{_now_ts}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ============================
 # NAVIGAZIONE TABS
 # ============================
 tab_news, tab_futures, tab_monitor, tab_markets, tab_ai_report, tab_cape, tab_liquidity, tab_crypto = st.tabs([
