@@ -43,7 +43,7 @@ st.set_page_config(
 # Riduci padding superiore di Streamlit
 st.markdown("""
 <style>
-    /* Nascondi solo toolbar, NON l'header (contiene bottone sidebar) */
+    /* Nascondi solo toolbar */
     div[data-testid="stToolbar"] { display: none !important; }
     div[data-testid="stDecoration"] { display: none !important; }
     
@@ -72,6 +72,15 @@ st.markdown("""
     }
     section[data-testid="stSidebar"] > div > div {
         padding-top: 0 !important;
+    }
+
+    /* Nascondi il bottone X per chiudere la sidebar — così non si può chiudere */
+    button[data-testid="stSidebarCollapseButton"] {
+        display: none !important;
+    }
+    /* Fallback: nascondi anche il bottone close nella sidebar header */
+    section[data-testid="stSidebar"] button[kind="headerNoPadding"] {
+        display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
