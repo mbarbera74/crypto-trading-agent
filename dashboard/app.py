@@ -43,11 +43,21 @@ st.set_page_config(
 # Riduci padding superiore di Streamlit
 st.markdown("""
 <style>
-    /* Elimina header Streamlit */
-    header[data-testid="stHeader"] { display: none !important; height: 0 !important; }
-    .stApp > header { display: none !important; }
+    /* Elimina toolbar e decorazione ma MANTIENI il bottone sidebar */
     div[data-testid="stToolbar"] { display: none !important; }
     div[data-testid="stDecoration"] { display: none !important; }
+    
+    /* Header: riduci altezza ma non nasconderlo (contiene il bottone sidebar) */
+    header[data-testid="stHeader"] {
+        height: auto !important;
+        min-height: 0 !important;
+        background: transparent !important;
+    }
+    .stApp > header {
+        height: auto !important;
+        min-height: 0 !important;
+        background: transparent !important;
+    }
     
     /* Elimina tutto il padding/margin superiore */
     .block-container {
@@ -92,63 +102,29 @@ st.markdown("""
         padding-top: 0 !important;
     }
     
-    /* Bottone sidebar sempre visibile su mobile */
-    button[data-testid="stSidebarCollapsedControl"],
-    button[kind="headerNoPadding"],
-    [data-testid="collapsedControl"] {
-        display: block !important;
+    /* Bottone sidebar SEMPRE visibile e grande */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    button[kind="headerNoPadding"] {
         visibility: visible !important;
+        display: block !important;
         opacity: 1 !important;
-        position: fixed !important;
-        top: 8px !important;
-        left: 8px !important;
         z-index: 999999 !important;
-        background: #1e1e2e !important;
-        border: 2px solid #e94560 !important;
+        background: #e94560 !important;
+        border: none !important;
         border-radius: 8px !important;
-        padding: 6px 10px !important;
-        color: #e0e0e0 !important;
-        font-size: 20px !important;
-        cursor: pointer !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
+        min-width: 40px !important;
+        min-height: 40px !important;
+        box-shadow: 0 2px 10px rgba(233,69,96,0.6) !important;
     }
-    
-    /* Forza visibilità di QUALSIASI bottone collapse sidebar */
-    [data-testid="stSidebar"][aria-expanded="false"] ~ div button,
-    .stApp [data-testid="stSidebarCollapsedControl"] {
-        display: block !important;
-        visibility: visible !important;
+    [data-testid="stSidebarCollapsedControl"] svg,
+    [data-testid="collapsedControl"] svg,
+    button[kind="headerNoPadding"] svg {
+        color: white !important;
+        width: 24px !important;
+        height: 24px !important;
     }
 </style>
-""", unsafe_allow_html=True)
-
-# Bottone fisso HTML per riaprire sidebar (fallback per mobile)
-st.markdown("""
-<div id="sidebar-toggle" onclick="
-    var btn = document.querySelector('[data-testid=stSidebarCollapsedControl]') 
-           || document.querySelector('button[kind=headerNoPadding]')
-           || document.querySelector('[data-testid=collapsedControl]');
-    if (btn) { btn.click(); }
-    else {
-        var sidebar = document.querySelector('[data-testid=stSidebar]');
-        if (sidebar) { sidebar.style.display = 'block'; sidebar.style.transform = 'none'; }
-    }
-" style="
-    position: fixed;
-    top: 6px;
-    left: 6px;
-    z-index: 9999999;
-    background: #e94560;
-    border: none;
-    border-radius: 8px;
-    padding: 5px 12px;
-    cursor: pointer;
-    font-size: 18px;
-    color: #ffffff;
-    box-shadow: 0 2px 10px rgba(233,69,96,0.6);
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-">📊</div>
 """, unsafe_allow_html=True)
 
 # Auto-refresh ogni 60 secondi (prezzi sidebar e news ticker)
