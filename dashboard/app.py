@@ -37,50 +37,25 @@ st.set_page_config(
     page_title="Trading Agent - Multi Asset",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 # Riduci padding superiore di Streamlit
 st.markdown("""
 <style>
-    /* Elimina toolbar e decorazione ma MANTIENI il bottone sidebar */
+    /* Nascondi solo toolbar, NON l'header (contiene bottone sidebar) */
     div[data-testid="stToolbar"] { display: none !important; }
     div[data-testid="stDecoration"] { display: none !important; }
     
-    /* Header: riduci altezza ma non nasconderlo (contiene il bottone sidebar) */
-    header[data-testid="stHeader"] {
-        height: auto !important;
-        min-height: 0 !important;
-        background: transparent !important;
-    }
-    .stApp > header {
-        height: auto !important;
-        min-height: 0 !important;
-        background: transparent !important;
-    }
-    
-    /* Elimina tutto il padding/margin superiore */
+    /* Riduci padding superiore */
     .block-container {
-        padding-top: 0 !important;
+        padding-top: 0.5rem !important;
         margin-top: 0 !important;
         max-width: 100% !important;
     }
     .stMainBlockContainer {
-        padding-top: 0 !important;
+        padding-top: 0.5rem !important;
         margin-top: 0 !important;
-    }
-    .main .block-container {
-        padding-top: 0 !important;
-    }
-    .appview-container {
-        padding-top: 0 !important;
-        margin-top: 0 !important;
-    }
-    section.main > div {
-        padding-top: 0 !important;
-    }
-    .stApp {
-        margin-top: -1rem !important;
     }
     
     /* Nascondi iframe autorefresh */
@@ -90,39 +65,13 @@ st.markdown("""
         overflow: hidden !important;
     }
     
-    /* Sidebar padding - allinea con contenuto principale */
+    /* Sidebar padding */
     section[data-testid="stSidebar"] > div {
         padding-top: 1.5rem !important;
         margin-top: 0 !important;
     }
     section[data-testid="stSidebar"] > div > div {
         padding-top: 0 !important;
-    }
-    .stSidebar .block-container {
-        padding-top: 0 !important;
-    }
-    
-    /* Bottone sidebar SEMPRE visibile e grande */
-    [data-testid="stSidebarCollapsedControl"],
-    [data-testid="collapsedControl"],
-    button[kind="headerNoPadding"] {
-        visibility: visible !important;
-        display: block !important;
-        opacity: 1 !important;
-        z-index: 999999 !important;
-        background: #e94560 !important;
-        border: none !important;
-        border-radius: 8px !important;
-        min-width: 40px !important;
-        min-height: 40px !important;
-        box-shadow: 0 2px 10px rgba(233,69,96,0.6) !important;
-    }
-    [data-testid="stSidebarCollapsedControl"] svg,
-    [data-testid="collapsedControl"] svg,
-    button[kind="headerNoPadding"] svg {
-        color: white !important;
-        width: 24px !important;
-        height: 24px !important;
     }
 </style>
 """, unsafe_allow_html=True)
