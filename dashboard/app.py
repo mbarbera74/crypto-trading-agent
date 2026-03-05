@@ -2110,21 +2110,30 @@ with tab_ai_report:
                         save=save_report,
                     )
                 if free_result:
+                    st.session_state["freeform_last_result"] = free_result
                     st.success("✅ Report generato!" + (" E salvato nell'archivio." if save_report else ""))
-                    st.divider()
-                    st.markdown("### 📝 Risposta AI")
-                    st.markdown(free_result)
-                    st.divider()
+
+            # Mostra ultimo report freeform generato (sopravvive ai rerun)
+            _free_result = st.session_state.get("freeform_last_result")
+            if _free_result:
+                st.divider()
+                st.markdown("### 📝 Risposta AI")
+                st.markdown(_free_result)
+                st.divider()
+                col_dl, col_clear_result = st.columns([3, 1])
+                with col_dl:
                     from datetime import datetime as dt_free_dl
                     st.download_button(
                         label="📥 Scarica (Markdown)",
-                        data=free_result,
+                        data=_free_result,
                         file_name=f"analisi_custom_{dt_free_dl.now().strftime('%Y-%m-%d_%H%M')}.md",
                         mime="text/markdown",
                         key="dl_freeform",
                     )
-                else:
-                    st.error("❌ Errore nella generazione. Controlla il token e la connessione.")
+                with col_clear_result:
+                    if st.button("🗑️ Chiudi report", key="clear_freeform_result"):
+                        del st.session_state["freeform_last_result"]
+                        st.rerun()
 
         # ════════════════════════════════════════════════════════════
         # SUB-TAB 3: Archivio Report
