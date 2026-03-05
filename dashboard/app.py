@@ -73,15 +73,6 @@ st.markdown("""
     section[data-testid="stSidebar"] > div > div {
         padding-top: 0 !important;
     }
-
-    /* Nascondi il bottone X per chiudere la sidebar — così non si può chiudere */
-    button[data-testid="stSidebarCollapseButton"] {
-        display: none !important;
-    }
-    /* Fallback: nascondi anche il bottone close nella sidebar header */
-    section[data-testid="stSidebar"] button[kind="headerNoPadding"] {
-        display: none !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
