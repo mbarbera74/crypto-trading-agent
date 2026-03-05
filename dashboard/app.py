@@ -2052,6 +2052,10 @@ with tab_ai_report:
 
             # ── Dialog per salvare come preimpostato ──
             if save_as_preset and user_prompt.strip():
+                st.session_state["show_save_preset"] = True
+                st.session_state["save_preset_prompt"] = user_prompt.strip()
+
+            if st.session_state.get("show_save_preset"):
                 from analysis.ai_daily_report import save_custom_preset
                 import re as _re
                 st.divider()
@@ -2082,23 +2086,32 @@ with tab_ai_report:
                     key="preset_market_input",
                 )
 
-                if st.button("✅ Conferma Salvataggio", type="primary", key="confirm_save_preset"):
-                    if preset_name.strip():
-                        # Genera ID slug dal nome
-                        slug = _re.sub(r"[^a-z0-9]+", "_", preset_name.strip().lower()).strip("_")
-                        if save_custom_preset(
-                            preset_id=slug,
-                            name=preset_name.strip(),
-                            icon=preset_icon,
-                            description=preset_desc.strip() or preset_name.strip(),
-                            prompt_template=user_prompt.strip(),
-                            include_market_data=preset_market,
-                        ):
-                            st.success(f"✅ Preset **{preset_icon} {preset_name}** salvato! Lo trovi nella tab 'Report Preimpostati'.")
+                col_confirm, col_cancel = st.columns(2)
+                with col_confirm:
+                    if st.button("✅ Conferma Salvataggio", type="primary", key="confirm_save_preset"):
+                        if preset_name.strip():
+                            slug = _re.sub(r"[^a-z0-9]+", "_", preset_name.strip().lower()).strip("_")
+                            _prompt_to_save = st.session_state.get("save_preset_prompt", user_prompt.strip())
+                            if save_custom_preset(
+                                preset_id=slug,
+                                name=preset_name.strip(),
+                                icon=preset_icon,
+                                description=preset_desc.strip() or preset_name.strip(),
+                                prompt_template=_prompt_to_save,
+                                include_market_data=preset_market,
+                            ):
+                                st.success(f"✅ Preset **{preset_icon} {preset_name}** salvato! Lo trovi nella tab 'Report Preimpostati'.")
+                                st.session_state["show_save_preset"] = False
+                                st.session_state.pop("save_preset_prompt", None)
+                            else:
+                                st.error("Errore nel salvataggio.")
                         else:
-                            st.error("Errore nel salvataggio.")
-                    else:
-                        st.warning("Inserisci un nome per il report.")
+                            st.warning("Inserisci un nome per il report.")
+                with col_cancel:
+                    if st.button("❌ Annulla", key="cancel_save_preset"):
+                        st.session_state["show_save_preset"] = False
+                        st.session_state.pop("save_preset_prompt", None)
+                        st.rerun()
 
             # Generazione
             if generate_free and user_prompt.strip():
