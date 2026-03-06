@@ -665,6 +665,15 @@ class NewsCalendarProvider:
             (
                 "https://news.google.com/rss/search?q=site:reuters.com+"
                 "markets+OR+oil+OR+iran+OR+fed+OR+economy+OR+stocks"
+                "+OR+blackrock+OR+bitcoin+OR+treasury+OR+tariff+OR+opec"
+                "&hl=en-US&gl=US&ceid=US:en",
+                "Reuters"
+            ),
+            (
+                "https://news.google.com/rss/search?q=site:reuters.com+"
+                "bank+OR+fund+OR+withdrawal+OR+crisis+OR+default+OR+crash"
+                "+OR+inflation+OR+recession+OR+gold+OR+dollar+OR+euro"
+                "+OR+china+OR+russia+OR+nvidia+OR+apple+OR+tesla"
                 "&hl=en-US&gl=US&ceid=US:en",
                 "Reuters"
             ),
