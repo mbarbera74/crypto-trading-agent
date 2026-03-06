@@ -139,44 +139,59 @@ def _fetch_ticker_news():
     import requests
     from bs4 import BeautifulSoup
     headlines = []
+    seen = set()
     try:
-        rss_url = (
+        # Due query per massima copertura
+        rss_urls = [
             "https://news.google.com/rss/search?q=site:reuters.com+"
             "markets+OR+oil+OR+iran+OR+fed+OR+stocks+OR+economy+OR+war"
-            "&hl=en-US&gl=US&ceid=US:en"
-        )
+            "+OR+blackrock+OR+bitcoin+OR+treasury+OR+tariff+OR+opec"
+            "&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=site:reuters.com+"
+            "bank+OR+fund+OR+withdrawal+OR+crisis+OR+default+OR+crash"
+            "+OR+inflation+OR+recession+OR+gold+OR+dollar+OR+euro"
+            "+OR+china+OR+russia+OR+nvidia+OR+apple+OR+tesla"
+            "&hl=en-US&gl=US&ceid=US:en",
+        ]
         headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(rss_url, headers=headers, timeout=10)
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.text, "xml")
-            for item in soup.find_all("item")[:15]:
-                title = item.find("title")
-                link = item.find("link")
-                pub = item.find("pubDate")
-                if title:
-                    t = title.get_text(strip=True)
-                    if t.endswith(" - Reuters"):
-                        t = t[:-10].strip()
-                    url = link.get_text(strip=True) if link else ""
-                    # Estrai orario pubblicazione
-                    time_str = ""
-                    if pub:
-                        try:
-                            from email.utils import parsedate_to_datetime
-                            dt = parsedate_to_datetime(pub.get_text(strip=True))
-                            # Converti in ora locale (CET/CEST)
-                            import time as _time
-                            offset = _time.timezone if _time.daylight == 0 else _time.altzone
-                            from datetime import timedelta as _td
-                            dt_local = dt + _td(seconds=-offset)
-                            time_str = dt_local.strftime("%H:%M")
-                        except Exception:
-                            pass
-                    if len(t) > 15:
-                        headlines.append({"title": t, "url": url, "time": time_str})
+        for rss_url in rss_urls:
+            try:
+                r = requests.get(rss_url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, "xml")
+                    for item in soup.find_all("item")[:15]:
+                        title = item.find("title")
+                        link = item.find("link")
+                        pub = item.find("pubDate")
+                        if title:
+                            t = title.get_text(strip=True)
+                            if t.endswith(" - Reuters"):
+                                t = t[:-10].strip()
+                            if t in seen or len(t) < 15:
+                                continue
+                            seen.add(t)
+                            url = link.get_text(strip=True) if link else ""
+                            # Estrai orario pubblicazione
+                            time_str = ""
+                            if pub:
+                                try:
+                                    from email.utils import parsedate_to_datetime
+                                    dt = parsedate_to_datetime(pub.get_text(strip=True))
+                                    import time as _time
+                                    offset = _time.timezone if _time.daylight == 0 else _time.altzone
+                                    from datetime import timedelta as _td
+                                    dt_local = dt + _td(seconds=-offset)
+                                    time_str = dt_local.strftime("%H:%M")
+                                except Exception:
+                                    pass
+                            headlines.append({"title": t, "url": url, "time": time_str})
+            except Exception:
+                pass
     except Exception:
         pass
-    return headlines
+    # Ordina per orario (più recenti prima) e limita a 20
+    headlines.sort(key=lambda x: x.get("time", ""), reverse=True)
+    return headlines[:20]
 
 # ============================
 # NEWS TICKER SCORREVOLE (top della pagina, refresh 5 min)
