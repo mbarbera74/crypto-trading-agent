@@ -538,7 +538,7 @@ class NewsCalendarProvider:
         # Ordina per data (più recenti prima)
         all_news.sort(key=lambda x: x.date, reverse=True)
 
-        return all_news[:40]  # Max 40 news (Yahoo + CNN + Reuters)
+        return all_news  # Tutte le news, filtrate nella dashboard
 
     def _fetch_cnn_news(self) -> list[NewsItem]:
         """
