@@ -134,24 +134,21 @@ def _fetch_live_prices():
 
 @st.cache_data(ttl=300)
 def _fetch_ticker_news():
-    """Recupera headline news market-moving via Google News RSS (Reuters). Cache 5min.
-    Ritorna lista di dict con title e url."""
+    """Recupera headline news market-moving via Google News RSS. Cache 5min.
+    Fonti: Reuters, Bloomberg, FT, Investing.com, Walter Bloomberg, First Squawk, Kobeissi.
+    Ritorna lista di dict con title, url, time."""
     import requests
     from bs4 import BeautifulSoup
     headlines = []
     seen = set()
     try:
-        # Due query per massima copertura
+        _kw = "markets+OR+oil+OR+fed+OR+stocks+OR+war+OR+breaking+OR+crisis+OR+tariff"
         rss_urls = [
-            "https://news.google.com/rss/search?q=site:reuters.com+"
-            "markets+OR+oil+OR+iran+OR+fed+OR+stocks+OR+economy+OR+war"
-            "+OR+blackrock+OR+bitcoin+OR+treasury+OR+tariff+OR+opec"
-            "&hl=en-US&gl=US&ceid=US:en",
-            "https://news.google.com/rss/search?q=site:reuters.com+"
-            "bank+OR+fund+OR+withdrawal+OR+crisis+OR+default+OR+crash"
-            "+OR+inflation+OR+recession+OR+gold+OR+dollar+OR+euro"
-            "+OR+china+OR+russia+OR+nvidia+OR+apple+OR+tesla"
-            "&hl=en-US&gl=US&ceid=US:en",
+            f"https://news.google.com/rss/search?q=site:reuters.com+{_kw}&hl=en-US&gl=US&ceid=US:en",
+            f"https://news.google.com/rss/search?q=site:bloomberg.com+{_kw}&hl=en-US&gl=US&ceid=US:en",
+            f"https://news.google.com/rss/search?q=site:ft.com+{_kw}&hl=en-US&gl=US&ceid=US:en",
+            f"https://news.google.com/rss/search?q=site:investing.com+{_kw}&hl=en-US&gl=US&ceid=US:en",
+            "https://news.google.com/rss/search?q=from:DeItaone+OR+from:FirstSquawk+markets+OR+breaking&hl=en-US&gl=US&ceid=US:en",
         ]
         headers = {"User-Agent": "Mozilla/5.0"}
         for rss_url in rss_urls:
@@ -159,14 +156,19 @@ def _fetch_ticker_news():
                 r = requests.get(rss_url, headers=headers, timeout=10)
                 if r.status_code == 200:
                     soup = BeautifulSoup(r.text, "xml")
-                    for item in soup.find_all("item")[:15]:
+                    for item in soup.find_all("item")[:10]:
                         title = item.find("title")
                         link = item.find("link")
                         pub = item.find("pubDate")
                         if title:
                             t = title.get_text(strip=True)
-                            if t.endswith(" - Reuters"):
-                                t = t[:-10].strip()
+                            # Rimuovi suffissi fonte
+                            for _sfx in [" - Reuters", " - Bloomberg.com", " - Financial Times",
+                                         " - Investing.com", " - Forex Factory", " - Yahoo Finance",
+                                         " - CNBC", " - MarketWatch"]:
+                                if t.endswith(_sfx):
+                                    t = t[:-len(_sfx)].strip()
+                                    break
                             if t in seen or len(t) < 15:
                                 continue
                             seen.add(t)
@@ -1543,7 +1545,7 @@ with tab_news:
     if calendar:
         # ── NEWS (in testa) ──
         st.header("📰 Ultime News di Mercato")
-        st.caption("Fonti: Reuters (breaking), Yahoo Finance, CNN Business")
+        st.caption("Fonti: Reuters, Bloomberg, Financial Times, Investing.com, Walter Bloomberg, First Squawk, Yahoo Finance, CNN")
         if calendar.news:
             # Filtro: solo news importanti (market-moving) di default
             important_keywords = [
@@ -1573,7 +1575,7 @@ with tab_news:
             with col_src:
                 source_filter = st.multiselect(
                     "📡 Fonte",
-                    options=["Reuters", "Yahoo Finance", "CNN", "Tutte"],
+                    options=["Reuters", "Bloomberg", "Financial Times", "Investing", "First Squawk", "Walter Bloomberg", "Kobeissi", "Yahoo Finance", "CNN", "Tutte"],
                     default=["Tutte"],
                     key="news_source_filter",
                 )
@@ -1611,15 +1613,20 @@ with tab_news:
                 source_badge = ""
                 if "Reuters" in n.source:
                     source_badge = " ⚡"
+                elif "Bloomberg" in n.source:
+                    source_badge = " 🟦"
+                elif "Financial Times" in n.source or "FT" in n.source:
+                    source_badge = " 📋"
+                elif "First Squawk" in n.source or "Walter" in n.source or "Kobeissi" in n.source:
+                    source_badge = " 🐦"
                 elif "CNN" in n.source:
                     source_badge = " 📺"
+                elif "Investing" in n.source:
+                    source_badge = " 📊"
                 with st.expander(f"{marker}{source_badge} {n.title}", expanded=False):
                     if is_important:
                         st.markdown("**⚡ Market-moving**")
-                    if "Reuters" in n.source:
-                        st.markdown(f"⚡ **Fonte: {n.source}** (breaking)")
-                    elif "CNN" in n.source:
-                        st.markdown("📺 **Fonte: CNN Business**")
+                    st.markdown(f"**Fonte: {n.source}**")
                     st.caption(f"{n.source} | {n.date}")
                     st.write(n.summary)
                     if n.url:

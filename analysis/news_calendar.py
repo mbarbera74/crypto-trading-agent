@@ -643,10 +643,9 @@ class NewsCalendarProvider:
 
     def _fetch_reuters_news(self) -> list[NewsItem]:
         """
-        Recupera breaking news da Reuters via Google News RSS.
-        Google News aggrega le breaking Reuters in tempo reale,
-        bypassando il paywall del sito reuters.com.
-        Sezioni: markets, oil, iran, geopolitics, economy.
+        Recupera breaking news da fonti finanziarie via Google News RSS.
+        Fonti: Reuters, Bloomberg, Financial Times, Investing.com,
+        Walter Bloomberg (@DeItaone), First Squawk, Kobeissi Letter.
         """
         import requests
         from bs4 import BeautifulSoup
@@ -660,30 +659,27 @@ class NewsCalendarProvider:
                           "Chrome/120.0.0.0 Safari/537.36",
         }
 
-        # Query Google News RSS per news Reuters su temi market-moving
+        # Query Google News RSS per news market-moving da tutte le fonti
+        _kw_markets = "markets+OR+oil+OR+fed+OR+economy+OR+stocks+OR+blackrock+OR+bitcoin+OR+treasury+OR+tariff+OR+opec"
+        _kw_finance = "bank+OR+fund+OR+withdrawal+OR+crisis+OR+crash+OR+inflation+OR+recession+OR+gold+OR+dollar"
+        _kw_geo = "hormuz+OR+war+OR+missile+OR+geopolit+OR+nuclear+OR+sanctions+OR+iran+OR+china+OR+russia"
+
         rss_feeds = [
-            (
-                "https://news.google.com/rss/search?q=site:reuters.com+"
-                "markets+OR+oil+OR+iran+OR+fed+OR+economy+OR+stocks"
-                "+OR+blackrock+OR+bitcoin+OR+treasury+OR+tariff+OR+opec"
-                "&hl=en-US&gl=US&ceid=US:en",
-                "Reuters"
-            ),
-            (
-                "https://news.google.com/rss/search?q=site:reuters.com+"
-                "bank+OR+fund+OR+withdrawal+OR+crisis+OR+default+OR+crash"
-                "+OR+inflation+OR+recession+OR+gold+OR+dollar+OR+euro"
-                "+OR+china+OR+russia+OR+nvidia+OR+apple+OR+tesla"
-                "&hl=en-US&gl=US&ceid=US:en",
-                "Reuters"
-            ),
-            (
-                "https://news.google.com/rss/search?q=site:reuters.com+"
-                "hormuz+OR+opec+OR+missile+OR+war+OR+geopolit+OR+nuclear"
-                "+OR+tariff+OR+sanctions"
-                "&hl=en-US&gl=US&ceid=US:en",
-                "Reuters Breaking"
-            ),
+            # Reuters
+            (f"https://news.google.com/rss/search?q=site:reuters.com+{_kw_markets}&hl=en-US&gl=US&ceid=US:en", "Reuters"),
+            (f"https://news.google.com/rss/search?q=site:reuters.com+{_kw_finance}&hl=en-US&gl=US&ceid=US:en", "Reuters"),
+            (f"https://news.google.com/rss/search?q=site:reuters.com+{_kw_geo}&hl=en-US&gl=US&ceid=US:en", "Reuters Breaking"),
+            # Bloomberg
+            (f"https://news.google.com/rss/search?q=site:bloomberg.com+{_kw_markets}&hl=en-US&gl=US&ceid=US:en", "Bloomberg"),
+            (f"https://news.google.com/rss/search?q=site:bloomberg.com+{_kw_finance}+OR+{_kw_geo}&hl=en-US&gl=US&ceid=US:en", "Bloomberg"),
+            # Financial Times
+            (f"https://news.google.com/rss/search?q=site:ft.com+{_kw_markets}+OR+{_kw_geo}&hl=en-US&gl=US&ceid=US:en", "Financial Times"),
+            # Investing.com
+            (f"https://news.google.com/rss/search?q=site:investing.com+{_kw_markets}+OR+breaking&hl=en-US&gl=US&ceid=US:en", "Investing.com"),
+            # Walter Bloomberg (@DeItaone) + First Squawk + Kobeissi via aggregatori
+            ("https://news.google.com/rss/search?q=from:DeItaone+markets+OR+breaking+OR+stocks&hl=en-US&gl=US&ceid=US:en", "Walter Bloomberg"),
+            ("https://news.google.com/rss/search?q=from:FirstSquawk+breaking+OR+markets+OR+fed&hl=en-US&gl=US&ceid=US:en", "First Squawk"),
+            ("https://news.google.com/rss/search?q=KobeissiLetter+markets+OR+stocks+OR+breaking&hl=en-US&gl=US&ceid=US:en", "Kobeissi Letter"),
         ]
 
         for rss_url, source_label in rss_feeds:
@@ -696,30 +692,37 @@ class NewsCalendarProvider:
                 soup = BeautifulSoup(response.text, "xml")
                 items = soup.find_all("item")
 
-                for item in items[:20]:
+                for item in items[:15]:
                     title_tag = item.find("title")
                     link_tag = item.find("link")
                     pub_tag = item.find("pubDate")
+                    source_tag = item.find("source")
 
                     if not title_tag:
                         continue
 
                     raw_title = title_tag.get_text(strip=True)
 
-                    # Filtra solo news Reuters (Google News include anche altre fonti)
-                    if "Reuters" not in raw_title and "reuters.com" not in (
-                        link_tag.get_text(strip=True) if link_tag else ""
-                    ):
-                        continue
-
-                    # Pulisci titolo: rimuovi " - Reuters" dal fondo
+                    # Pulisci titolo: rimuovi suffissi fonte comune
                     title = raw_title
-                    if title.endswith(" - Reuters"):
-                        title = title[:-10].strip()
+                    for _sfx in [" - Reuters", " - Bloomberg.com", " - Financial Times",
+                                 " - Investing.com", " - Forex Factory", " - Yahoo Finance",
+                                 " - CNBC", " - MarketWatch"]:
+                        if title.endswith(_sfx):
+                            title = title[:-len(_sfx)].strip()
+                            break
 
                     if title in seen_titles or len(title) < 15:
                         continue
                     seen_titles.add(title)
+
+                    # Determina fonte reale dal tag <source> o dal suffisso
+                    actual_source = source_label
+                    if source_tag:
+                        src_name = source_tag.get_text(strip=True)
+                        if src_name in ("Reuters", "Bloomberg.com", "Financial Times",
+                                        "Investing.com", "Forex Factory", "CNBC"):
+                            actual_source = src_name.replace(".com", "")
 
                     # URL (Google News redirect, ma contiene l'articolo)
                     url = link_tag.get_text(strip=True) if link_tag else ""
@@ -744,7 +747,7 @@ class NewsCalendarProvider:
                     reuters_news.append(NewsItem(
                         title=title,
                         summary=summary,
-                        source=source_label,
+                        source=actual_source,
                         date=date_str,
                         url=url,
                     ))
