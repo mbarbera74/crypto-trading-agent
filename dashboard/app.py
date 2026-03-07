@@ -1596,6 +1596,9 @@ with tab_news:
                 if user_keywords:
                     if not any(kw in text_lower for kw in user_keywords):
                         continue
+                elif "Tutte" not in source_filter:
+                    # Se l'utente ha selezionato fonti specifiche, mostra tutte le news di quelle fonti
+                    pass
                 elif not show_all and not is_important:
                     continue
 
