@@ -1580,7 +1580,7 @@ with tab_news:
                     key="news_keyword_filter",
                 )
             with col_src:
-                source_filter = st.multiselect(
+                source_filter_raw = st.multiselect(
                     "📡 Fonte",
                     options=["Tutte", "Reuters", "Bloomberg", "Financial Times", "Investing", "CNBC",
                              "First Squawk", "Walter Bloomberg", "Kobeissi", "Newsquawk", "LiveSquawk",
@@ -1589,6 +1589,11 @@ with tab_news:
                     default=["Tutte"],
                     key="news_source_filter",
                 )
+                # Se l'utente seleziona fonti specifiche insieme a "Tutte", ignora "Tutte"
+                if len(source_filter_raw) > 1 and "Tutte" in source_filter_raw:
+                    source_filter = [s for s in source_filter_raw if s != "Tutte"]
+                else:
+                    source_filter = source_filter_raw
             with col_all:
                 st.write("")  # spacer
                 show_all = st.checkbox("Mostra tutte", value=False, key="news_filter")
