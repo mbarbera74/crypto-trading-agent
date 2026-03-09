@@ -151,6 +151,11 @@ def _fetch_ticker_news():
             "https://news.google.com/rss/search?q=from:DeItaone+OR+from:FirstSquawk+markets+OR+breaking&hl=en-US&gl=US&ceid=US:en",
             "https://news.google.com/rss/search?q=Trump+says+OR+Trump+announces+tariff+OR+iran+OR+markets+OR+oil&hl=en-US&gl=US&ceid=US:en",
             "https://nitter.net/realDonaldTrump/rss",
+            "https://nitter.net/DeItaone/rss",
+            "https://nitter.net/FirstSquawk/rss",
+            "https://nitter.net/unusual_whales/rss",
+            "https://nitter.net/LiveSquawk/rss",
+            "https://nitter.net/disclosetv/rss",
         ]
         headers = {"User-Agent": "Mozilla/5.0"}
         for rss_url in rss_urls:
@@ -1577,7 +1582,7 @@ with tab_news:
             with col_src:
                 source_filter = st.multiselect(
                     "📡 Fonte",
-                    options=["Reuters", "Bloomberg", "Financial Times", "Investing", "First Squawk", "Walter Bloomberg", "Kobeissi", "Trump", "Yahoo Finance", "CNN", "Tutte"],
+                    options=["Reuters", "Bloomberg", "Financial Times", "Investing", "First Squawk", "Walter Bloomberg", "Kobeissi", "Trump", "Unusual Whales", "Newsquawk", "LiveSquawk", "Disclose.tv", "El-Erian", "Yahoo Finance", "CNN", "Tutte"],
                     default=["Tutte"],
                     key="news_source_filter",
                 )

@@ -683,8 +683,16 @@ class NewsCalendarProvider:
             # Trump Truth Social (post market-moving riportati dalla stampa)
             ("https://news.google.com/rss/search?q=Trump+Truth+Social+post+markets+OR+tariff+OR+iran+OR+stocks+OR+economy+OR+oil&hl=en-US&gl=US&ceid=US:en", "Trump Truth"),
             ("https://news.google.com/rss/search?q=Trump+says+OR+Trump+announces+tariff+OR+iran+OR+economy+OR+oil+OR+markets&hl=en-US&gl=US&ceid=US:en", "Trump"),
-            # Trump direct feed via Nitter (real-time, <1 min delay)
+            # === FEED DIRETTI X/NITTER (real-time, <1 min delay) ===
             ("https://nitter.net/realDonaldTrump/rss", "Trump (X/Truth)"),
+            ("https://nitter.net/DeItaone/rss", "Walter Bloomberg"),
+            ("https://nitter.net/FirstSquawk/rss", "First Squawk"),
+            ("https://nitter.net/unusual_whales/rss", "Unusual Whales"),
+            ("https://nitter.net/Newsquawk/rss", "Newsquawk"),
+            ("https://nitter.net/LiveSquawk/rss", "LiveSquawk"),
+            ("https://nitter.net/financialjuice/rss", "FinancialJuice"),
+            ("https://nitter.net/disclosetv/rss", "Disclose.tv"),
+            ("https://nitter.net/elerianm/rss", "El-Erian"),
         ]
 
         for rss_url, source_label in rss_feeds:
