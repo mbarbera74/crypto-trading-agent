@@ -1603,6 +1603,14 @@ with tab_news:
             if keyword_filter.strip():
                 user_keywords = [k.strip().lower() for k in keyword_filter.replace(",", " ").split() if k.strip()]
 
+            # Mostra conteggio fonti disponibili
+            from collections import Counter as _Counter
+            _src_counts = _Counter(n.source for n in calendar.news)
+            st.caption(f"📊 {len(calendar.news)} news caricate | Fonti: {', '.join(f'{s}({c})' for s,c in _src_counts.most_common(10))}")
+            if "Tutte" not in source_filter:
+                st.caption(f"🔍 Filtro attivo: {source_filter}")
+
+            _news_shown = 0
             for n in calendar.news:
                 text_lower = (n.title + " " + n.summary).lower()
                 is_important = any(kw in text_lower for kw in important_keywords)
@@ -1651,6 +1659,12 @@ with tab_news:
                     st.write(n.summary)
                     if n.url:
                         st.markdown(f"[🔗 Leggi articolo completo]({n.url})")
+                _news_shown += 1
+
+            if _news_shown == 0:
+                st.warning(f"⚠️ Nessuna news trovata con il filtro attuale. Prova a selezionare 'Tutte' o cambiare fonte.")
+            else:
+                st.caption(f"📰 {_news_shown} news mostrate")
         else:
             st.info("Nessuna news disponibile")
 
