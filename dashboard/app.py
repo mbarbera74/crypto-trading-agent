@@ -1544,8 +1544,14 @@ with tab_news:
     run_calendar = st.button("🔄 Aggiorna News & Calendario", use_container_width=True)
 
     if run_calendar:
+        # Forza pulizia dati vecchi
+        if "news_calendar" in st.session_state:
+            del st.session_state["news_calendar"]
         from analysis.news_calendar import NewsCalendarProvider
-        with st.spinner("Recupero earnings e news..."):
+        import importlib, analysis.news_calendar
+        importlib.reload(analysis.news_calendar)
+        from analysis.news_calendar import NewsCalendarProvider
+        with st.spinner("Recupero earnings e news... (può richiedere 30-60 secondi)"):
             st.session_state["news_calendar"] = NewsCalendarProvider().get_full_calendar()
 
     calendar = st.session_state.get("news_calendar")
