@@ -1582,7 +1582,10 @@ with tab_news:
             with col_src:
                 source_filter = st.multiselect(
                     "📡 Fonte",
-                    options=["Reuters", "Bloomberg", "Financial Times", "Investing", "First Squawk", "Walter Bloomberg", "Kobeissi", "Trump", "Unusual Whales", "Newsquawk", "LiveSquawk", "Disclose.tv", "El-Erian", "Yahoo Finance", "CNN", "Tutte"],
+                    options=["Tutte", "Reuters", "Bloomberg", "Financial Times", "Investing", "CNBC",
+                             "First Squawk", "Walter Bloomberg", "Kobeissi", "Newsquawk", "LiveSquawk",
+                             "Unusual Whales", "FinancialJuice", "Disclose.tv", "El-Erian",
+                             "Trump", "Forex Factory", "CNN", "Yahoo Finance", "Barrons", "NBC News"],
                     default=["Tutte"],
                     key="news_source_filter",
                 )
