@@ -96,6 +96,7 @@ def cmd_backtest(args):
         initial_capital=args.capital,
         commission_pct=cfg["commission"],
         use_ml=args.ml,
+        use_hmm=args.hmm,
         long_only=cfg["long_only"],
         asset_name=cfg["name"],
         currency=cfg["currency"],
@@ -742,6 +743,7 @@ def main():
     bt_parser.add_argument("--days", type=int, default=90, help="Giorni di storico (default: 90)")
     bt_parser.add_argument("--capital", type=float, default=10000, help="Capitale iniziale (default: 10000)")
     bt_parser.add_argument("--ml", action="store_true", help="Abilita ML nel backtest")
+    bt_parser.add_argument("--hmm", action="store_true", help="Abilita HMM Regime Detection nel backtest")
     bt_parser.add_argument("--asset", type=str, default="btc",
                            choices=["btc", "ndx", "swda", "csndx"],
                            help="Asset da testare: btc, ndx, swda, csndx (default: btc)")

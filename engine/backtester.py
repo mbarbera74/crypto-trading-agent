@@ -13,6 +13,7 @@ import pandas as pd
 from indicators.technical import TechnicalIndicators
 from strategy.momentum import MomentumStrategy, Signal, TradeSignal
 from ml.model import MLPredictor
+from analysis.regime_detector import RegimeDetector, REGIME_LABELS
 from config.settings import config
 from utils.logger import get_logger
 
@@ -81,6 +82,7 @@ class Backtester:
         initial_capital: float = 10000.0,
         commission_pct: float = 0.001,
         use_ml: bool = False,
+        use_hmm: bool = False,
         long_only: bool = False,
         asset_name: str = "",
         currency: str = "$",
@@ -91,6 +93,7 @@ class Backtester:
         self.initial_capital = initial_capital
         self.commission_pct = commission_pct
         self.use_ml = use_ml
+        self.use_hmm = use_hmm
         self.long_only = long_only
         self.asset_name = asset_name
         self.currency = currency
@@ -127,6 +130,31 @@ class Backtester:
             train_size = int(len(df_indicators) * 0.6)
             train_data = df_indicators.iloc[:train_size]
             self.ml_predictor.train(train_data)
+
+        # Pre-calcola regimi HMM se abilitato
+        regime_series = None
+        if self.use_hmm:
+            logger.info("Calcolo regimi HMM per il backtest...")
+            try:
+                detector = RegimeDetector()
+                features, dates = detector._prepare_features(df)
+                if features is not None and len(features) > 100:
+                    model = detector._fit_model("backtest", features)
+                    if model is not None:
+                        raw_regimes = model.predict(features)
+                        regime_map = detector._map_regimes(model, features, raw_regimes)
+                        mapped = [REGIME_LABELS[regime_map[r]] for r in raw_regimes]
+                        regime_series = pd.Series(
+                            mapped,
+                            index=dates[len(dates) - len(mapped):],
+                        )
+                        logger.info(f"Regimi HMM calcolati: {len(regime_series)} barre")
+                    else:
+                        logger.warning("HMM fit fallito, backtest senza regime")
+                else:
+                    logger.warning("Dati insufficienti per HMM, backtest senza regime")
+            except Exception as e:
+                logger.warning(f"Errore HMM nel backtest: {e}. Proseguo senza regime.")
 
         # Simulazione
         capital = self.initial_capital
@@ -196,7 +224,16 @@ class Backtester:
             if self.use_ml and self.ml_predictor and i > int(len(df_indicators) * 0.6):
                 ml_pred = self.ml_predictor.predict(window)
 
-            signal = self.strategy.analyze(window, ml_prediction=ml_pred)
+            # Regime corrente per questa candela
+            current_regime = None
+            if regime_series is not None:
+                # Trova il regime per il timestamp corrente (o il più vicino precedente)
+                ts = df_indicators.index[i]
+                matching = regime_series.index[regime_series.index <= ts]
+                if len(matching) > 0:
+                    current_regime = regime_series.loc[matching[-1]]
+
+            signal = self.strategy.analyze(window, ml_prediction=ml_pred, regime=current_regime)
 
             # Esegui segnale
             if signal.signal == Signal.BUY and position is None:

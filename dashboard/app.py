@@ -466,6 +466,7 @@ with st.sidebar:
 
     st.divider()
     use_ml = st.checkbox("🧠 Usa ML", value=True)
+    use_hmm = st.checkbox("🔮 Usa HMM Regime", value=False)
 
     run_backtest = st.button("🚀 Esegui Backtest", type="primary", use_container_width=True)
     refresh_data = st.button("🔄 Aggiorna Dati", use_container_width=True)
@@ -903,6 +904,7 @@ with tab_crypto:
                     initial_capital=initial_capital,
                     commission_pct=bt_cfg["commission"],
                     use_ml=use_ml,
+                    use_hmm=use_hmm,
                     long_only=long_only,
                     asset_name=bt_cfg["name"],
                     currency=bt_cfg["currency"],
@@ -1147,6 +1149,7 @@ with tab_markets:
                     initial_capital=initial_capital,
                     commission_pct=bt_cfg["commission"],
                     use_ml=use_ml,
+                    use_hmm=use_hmm,
                     long_only=long_only,
                     asset_name=bt_cfg["name"],
                     currency=bt_cfg["currency"],
