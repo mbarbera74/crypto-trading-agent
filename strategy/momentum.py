@@ -71,13 +71,15 @@ class MomentumStrategy:
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
 
-    def analyze(self, df: pd.DataFrame, ml_prediction: Optional[float] = None) -> TradeSignal:
+    def analyze(self, df: pd.DataFrame, ml_prediction: Optional[float] = None,
+                regime: Optional[str] = None) -> TradeSignal:
         """
         Analizza il DataFrame con indicatori tecnici e genera un segnale.
 
         Args:
             df: DataFrame con indicatori tecnici già calcolati
             ml_prediction: Predizione ML opzionale (0=bearish, 0.5=neutral, 1=bullish)
+            regime: Regime di mercato HMM opzionale (es. "Bear Market", "Bull Trend")
 
         Returns:
             TradeSignal con segnale, confidenza e dettagli
@@ -224,6 +226,32 @@ class MomentumStrategy:
                 ml_bonus = 0.15 * (0.5 - ml_prediction) * 2
                 sell_score += ml_bonus
                 reasons_sell.append(f"ML predice ribasso (prob: {ml_prediction:.2f})")
+
+        # ============================================================
+        # 9. REGIME FILTER (HMM) - Modula il segnale se disponibile
+        # ============================================================
+        if regime:
+            regime_adjustments = {
+                "Strong Bull": (0.05, 0.0, "Regime Strong Bull: conferma BUY"),
+                "Bull Trend": (0.03, 0.0, "Regime Bull Trend: lieve supporto BUY"),
+                "Recovery": (0.08, 0.0, "Regime Recovery: forte supporto BUY"),
+                "Consolidation": (0.0, 0.0, "Regime Consolidation: segnale neutro"),
+                "High Volatility": (0.0, 0.03, "Regime High Volatility: cautela"),
+                "Correction": (-0.05, 0.10, "Regime Correction: contrarian BUY"),
+                "Bear Market": (-0.08, 0.15, "Regime Bear Market: forte contrarian BUY"),
+            }
+            buy_adj, sell_adj, reason = regime_adjustments.get(regime, (0, 0, ""))
+            if reason:
+                # In regime bearish, per trading attivo (non accumulo) riduciamo buy e aumentiamo sell
+                # Ma in accumulo il bonus è positivo — qui siamo nel trading attivo
+                buy_score += buy_adj
+                sell_score += sell_adj
+                if buy_adj > 0:
+                    reasons_buy.append(reason)
+                elif sell_adj > 0:
+                    reasons_sell.append(reason)
+                else:
+                    reasons_buy.append(reason)
 
         # ============================================================
         # DECISIONE FINALE

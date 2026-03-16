@@ -29,6 +29,10 @@ from ml.model import MLPredictor
 from analysis.market_analyzer import MarketAnalyzer
 from analysis.valuation import CapeAnalyzer
 from analysis.liquidity import LiquidityAnalyzer
+from analysis.regime_detector import (
+    RegimeDetector, REGIME_LABELS, REGIME_COLORS, REGIME_EMOJIS,
+    REGIME_STRATEGY, REGIME_ACCUMULATION_BONUS,
+)
 
 # ============================
 # CONFIGURAZIONE PAGINA
@@ -310,7 +314,7 @@ if _live_main:
 # ============================
 # NAVIGAZIONE TABS
 # ============================
-tab_news, tab_futures, tab_monitor, tab_markets, tab_ai_report, tab_cape, tab_liquidity, tab_crypto = st.tabs([
+tab_news, tab_futures, tab_monitor, tab_markets, tab_ai_report, tab_cape, tab_liquidity, tab_regime, tab_crypto = st.tabs([
     "📰 News & Calendario",
     "📡 Futures & Apertura",
     "📱 Segnali Accumulo",
@@ -318,6 +322,7 @@ tab_news, tab_futures, tab_monitor, tab_markets, tab_ai_report, tab_cape, tab_li
     "🤖 AI Daily Report",
     "📊 CAPE per Asset",
     "💧 Liquidità",
+    "🔮 Regime HMM",
     "🪙 Crypto Trading",
 ])
 
@@ -545,6 +550,175 @@ def _render_backtest_results(result, initial_capital, currency="$"):
         st.dataframe(pd.DataFrame(trade_data), use_container_width=True, hide_index=True)
     else:
         st.warning("Nessun trade eseguito. Prova ad aumentare i giorni di storico o ridurre la confidenza minima.")
+
+
+# ============================
+# TAB: REGIME DETECTION (HMM)
+# ============================
+with tab_regime:
+    st.title("🔮 Regime Detection — Hidden Markov Model")
+    st.markdown(
+        "Analisi del **regime di mercato** corrente usando un HMM a 7 stati "
+        "su 10-15 anni di dati storici. Il regime influenza direttamente i "
+        "segnali di accumulo e le raccomandazioni di ingresso."
+    )
+
+    @st.cache_data(ttl=3600, show_spinner="Analisi regimi in corso (può richiedere 1-2 minuti)...")
+    def run_regime_analysis():
+        """Esegue l'analisi di regime su tutti gli asset."""
+        detector = RegimeDetector()
+        return detector.full_analysis()
+
+    if st.button("🔄 Esegui Analisi Regime", key="btn_regime"):
+        st.cache_data.clear()
+
+    regime_report = run_regime_analysis()
+
+    if regime_report:
+        # ── Header: Regime dominante ──
+        dom = regime_report.dominant_regime
+        dom_emoji = regime_report.dominant_regime_emoji
+        concordance = regime_report.concordance
+
+        col_dom1, col_dom2, col_dom3 = st.columns([2, 1, 1])
+        with col_dom1:
+            st.metric(
+                "Regime Dominante",
+                f"{dom_emoji} {dom}",
+                delta=f"Concordanza: {concordance:.0%}",
+            )
+        with col_dom2:
+            bonus = REGIME_ACCUMULATION_BONUS.get(dom, 0)
+            st.metric(
+                "Bonus Accumulo",
+                f"{bonus:+.2f}",
+                delta="favorevole" if bonus > 0 else ("neutro" if bonus == 0 else "cautela"),
+                delta_color="normal" if bonus >= 0 else "inverse",
+            )
+        with col_dom3:
+            strategy = REGIME_STRATEGY.get(dom, "")
+            st.metric("Strategia", strategy.split(" - ")[0] if " - " in strategy else strategy)
+
+        # Descrizione
+        if regime_report.market_phase_description:
+            st.info(regime_report.market_phase_description)
+
+        st.divider()
+
+        # ── Dettaglio per asset ──
+        st.subheader("📊 Regime per Asset")
+
+        assets_data = [
+            ("S&P 500", regime_report.sp500),
+            ("NASDAQ 100", regime_report.nasdaq100),
+            ("MSCI World", regime_report.msci_world),
+            ("Bitcoin", regime_report.btc),
+        ]
+
+        active_assets = [(name, r) for name, r in assets_data if r is not None]
+
+        if active_assets:
+            cols = st.columns(len(active_assets))
+            for col, (asset_name, result) in zip(cols, active_assets):
+                with col:
+                    st.markdown(f"### {result.regime_emoji} {asset_name}")
+                    st.markdown(f"**Regime:** {result.current_regime}")
+                    st.markdown(f"**Confidenza:** {result.confidence:.1%}")
+                    st.markdown(f"**In regime da:** {result.days_in_regime} giorni")
+                    if result.previous_regime:
+                        st.markdown(f"**Precedente:** {result.previous_regime}")
+                        st.markdown(f"**Transizione:** {result.transition_date}")
+                    st.markdown(f"**Bonus accumulo:** {result.accumulation_bonus:+.2f}")
+                    st.markdown(f"**Strategia:** {result.strategy_suggestion}")
+
+            st.divider()
+
+            # ── Grafici: Prezzo + Regime overlay ──
+            st.subheader("📈 Storico Regimi")
+
+            for asset_name, result in active_assets:
+                if result.regime_history is not None and not result.regime_history.empty:
+                    rh = result.regime_history
+
+                    fig = go.Figure()
+
+                    # Aggiungi bande colorate per ogni regime
+                    for regime_id in range(7):
+                        regime_name = REGIME_LABELS[regime_id]
+                        color = REGIME_COLORS[regime_name]
+                        mask = rh["regime_id"] == regime_id
+                        if mask.any():
+                            regime_dates = rh.index[mask]
+                            regime_prices = rh.loc[mask, "close"]
+                            fig.add_trace(go.Scatter(
+                                x=regime_dates,
+                                y=regime_prices,
+                                mode="markers",
+                                marker=dict(color=color, size=3),
+                                name=f"{REGIME_EMOJIS[regime_name]} {regime_name}",
+                                legendgroup=regime_name,
+                            ))
+
+                    # Linea prezzo
+                    fig.add_trace(go.Scatter(
+                        x=rh.index,
+                        y=rh["close"],
+                        mode="lines",
+                        line=dict(color="white", width=1),
+                        name="Prezzo",
+                        opacity=0.5,
+                    ))
+
+                    fig.update_layout(
+                        title=f"{asset_name} — Regime Storico ({result.ticker})",
+                        xaxis_title="Data",
+                        yaxis_title="Prezzo",
+                        template="plotly_dark",
+                        height=400,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                        margin=dict(l=50, r=20, t=60, b=40),
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+
+            st.divider()
+
+            # ── Probabilità di transizione ──
+            st.subheader("🔄 Probabilità di Transizione")
+            st.markdown("Probabilità di passare dal regime corrente ad un altro nei prossimi giorni:")
+
+            for asset_name, result in active_assets:
+                if result.transition_probs:
+                    st.markdown(f"**{asset_name}** (da: {result.regime_emoji} {result.current_regime})")
+                    prob_data = []
+                    for regime_name, prob in result.transition_probs.items():
+                        emoji = REGIME_EMOJIS.get(regime_name, "")
+                        prob_data.append({
+                            "Regime": f"{emoji} {regime_name}",
+                            "Probabilità": f"{prob:.1%}",
+                            "Barra": "█" * int(prob * 40),
+                        })
+                    st.dataframe(
+                        pd.DataFrame(prob_data),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
+        # ── Legenda regimi ──
+        with st.expander("ℹ️ Legenda dei 7 Regimi"):
+            legend_data = []
+            for rid in range(7):
+                name = REGIME_LABELS[rid]
+                legend_data.append({
+                    "": REGIME_EMOJIS[name],
+                    "Regime": name,
+                    "Bonus Accumulo": f"{REGIME_ACCUMULATION_BONUS[name]:+.2f}",
+                    "Strategia": REGIME_STRATEGY[name],
+                })
+            st.dataframe(pd.DataFrame(legend_data), hide_index=True, use_container_width=True)
+
+    else:
+        st.warning("Analisi regime non disponibile. Clicca il pulsante sopra per eseguirla.")
 
 
 # ============================

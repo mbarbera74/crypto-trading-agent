@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 from analysis.market_analyzer import MarketAnalyzer, MarketReport, AssetAnalysis
+from analysis.regime_detector import REGIME_ACCUMULATION_BONUS, REGIME_STRATEGY
 from notifications.whatsapp import WhatsAppNotifier
 from notifications.notifier import TelegramNotifier
 from utils.logger import get_logger
@@ -51,6 +52,11 @@ class AccumulationSignal:
     ath_price: float = 0.0
     drawdown_from_52w: float = 0.0
     crossed_levels: list[dict] = field(default_factory=list)  # Livelli raggiunti
+    # Regime HMM
+    regime_name: str = ""
+    regime_emoji: str = ""
+    regime_bonus: float = 0.0
+    regime_strategy: str = ""
 
 
 class AccumulationMonitor:
@@ -88,6 +94,20 @@ class AccumulationMonitor:
         # Recupera news importanti
         market_news = self._fetch_important_news()
 
+        # Regime per ogni asset (dal report)
+        regime_info = {}
+        if report.regime_report:
+            rr = report.regime_report
+            # CSNDX e NDX usano regime NASDAQ (o SP500 fallback)
+            ndx_regime = rr.nasdaq100 or rr.sp500
+            if ndx_regime:
+                regime_info["CSNDX"] = ndx_regime
+                regime_info["NDX"] = ndx_regime
+            # SWDA usa regime MSCI World (o SP500 fallback)
+            world_regime = rr.msci_world or rr.sp500
+            if world_regime:
+                regime_info["SWDA"] = world_regime
+
         signals = []
 
         # Genera segnali per SWDA.MI e CSNDX (gli asset di accumulo)
@@ -98,8 +118,16 @@ class AccumulationMonitor:
              report.csndx_entry_type, "€", "CSNDX (iShares NDX)"),
         ]:
             if asset and asset.current_price > 0:
+                # Trova il regime per questo asset
+                asset_regime = None
+                for key in regime_info:
+                    if key in name:
+                        asset_regime = regime_info[key]
+                        break
+
                 signal = self._build_signal(
-                    asset, score, rec, entry_type, currency, name
+                    asset, score, rec, entry_type, currency, name,
+                    regime=asset_regime,
                 )
                 signals.append(signal)
 
@@ -121,10 +149,29 @@ class AccumulationMonitor:
         return signals
 
     def _build_signal(self, asset: AssetAnalysis, score: float, rec: str,
-                       entry_type: str, currency: str, name: str) -> AccumulationSignal:
-        """Costruisce un segnale di accumulo per un asset."""
+                       entry_type: str, currency: str, name: str,
+                       regime=None) -> AccumulationSignal:
+        """Costruisce un segnale di accumulo per un asset, modulato dal regime HMM."""
 
-        # Determina azione
+        # Regime modula lo score
+        regime_name = ""
+        regime_emoji = ""
+        regime_bonus = 0.0
+        regime_strategy = ""
+
+        if regime is not None:
+            regime_name = regime.current_regime
+            regime_emoji = regime.regime_emoji
+            regime_bonus = regime.accumulation_bonus
+            regime_strategy = regime.strategy_suggestion
+            # Applica il bonus regime allo score
+            score = score + regime_bonus
+            logger.info(
+                f"{name}: regime={regime_name} ({regime_emoji}), "
+                f"bonus={regime_bonus:+.2f}, score aggiustato={score:+.2f}"
+            )
+
+        # Determina azione (con score aggiustato dal regime)
         if score > 0.2:
             action = "COMPRA"
         elif score > -0.2:
@@ -173,6 +220,10 @@ class AccumulationMonitor:
             drawdown_from_ath=asset.drawdown_from_ath,
             ath_price=asset.ath_price,
             drawdown_from_52w=asset.drawdown_from_52w,
+            regime_name=regime_name,
+            regime_emoji=regime_emoji,
+            regime_bonus=regime_bonus,
+            regime_strategy=regime_strategy,
         )
 
     def _check_price_levels(self, asset_name: str, current_price: float,

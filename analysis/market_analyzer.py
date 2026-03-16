@@ -20,6 +20,7 @@ import numpy as np
 from data.stock_fetcher import StockFetcher, TICKERS
 from analysis.valuation import CapeAnalyzer, CapeAnalysis
 from analysis.liquidity import LiquidityAnalyzer, LiquidityAnalysis
+from analysis.regime_detector import RegimeDetector, RegimeResult, MultiAssetRegimeReport
 from utils.logger import get_logger
 
 logger = get_logger("analysis.market_analyzer")
@@ -78,6 +79,8 @@ class MarketReport:
     # Analisi macro (CAPE S&P 500 come riferimento base)
     cape_sp500: Optional[CapeAnalysis] = None
     liquidity_analysis: Optional[LiquidityAnalysis] = None
+    # Regime di mercato (HMM)
+    regime_report: Optional[MultiAssetRegimeReport] = None
     # Raccomandazioni finali
     nasdaq100_recommendation: str = ""
     nasdaq100_score: float = 0.0
@@ -105,6 +108,7 @@ class MarketAnalyzer:
         self.stock_fetcher = StockFetcher()
         self.cape_analyzer = CapeAnalyzer()
         self.liquidity_analyzer = LiquidityAnalyzer()
+        self.regime_detector = RegimeDetector()
 
     def full_analysis(self, period: str = "1y") -> MarketReport:
         """
@@ -174,7 +178,15 @@ class MarketAnalyzer:
         logger.info("Analisi liquidità di mercato...")
         report.liquidity_analysis = self.liquidity_analyzer.analyze(period="6mo")
 
-        # 5. Genera raccomandazioni finali
+        # 5. Regime Detection (HMM)
+        logger.info("Analisi regime di mercato (HMM)...")
+        try:
+            report.regime_report = self.regime_detector.full_analysis()
+        except Exception as e:
+            logger.warning(f"Regime detection non disponibile: {e}")
+            report.regime_report = None
+
+        # 6. Genera raccomandazioni finali (con regime)
         self._generate_recommendations(report)
 
         logger.info("=" * 60)
@@ -336,15 +348,33 @@ class MarketAnalyzer:
         return analysis
 
     def _generate_recommendations(self, report: MarketReport):
-        """Genera raccomandazioni finali combinando tutti i fattori."""
+        """Genera raccomandazioni finali combinando tutti i fattori (incluso regime HMM)."""
 
         liquidity_score = report.liquidity_analysis.overall_score if report.liquidity_analysis else 0
+
+        # Regime bonus per asset (da HMM)
+        regime_bonus_ndx = 0.0
+        regime_bonus_swda = 0.0
+        regime_bonus_csndx = 0.0
+
+        if report.regime_report:
+            rr = report.regime_report
+            # NASDAQ 100 e CSNDX usano il regime NDX (o SP500 come fallback)
+            ndx_regime = rr.nasdaq100 or rr.sp500
+            if ndx_regime:
+                regime_bonus_ndx = ndx_regime.accumulation_bonus
+                regime_bonus_csndx = ndx_regime.accumulation_bonus
+
+            # SWDA usa il regime MSCI World (o SP500 come fallback)
+            world_regime = rr.msci_world or rr.sp500
+            if world_regime:
+                regime_bonus_swda = world_regime.accumulation_bonus
 
         # NASDAQ 100 (^NDX)
         if report.nasdaq100:
             tech_score = report.nasdaq100.technical_score
             cape_score = report.nasdaq100.cape_analysis.valuation_score if report.nasdaq100.cape_analysis else 0
-            composite = tech_score * 0.30 + cape_score * 0.35 + liquidity_score * 0.35
+            composite = tech_score * 0.25 + cape_score * 0.30 + liquidity_score * 0.30 + regime_bonus_ndx * 0.15
             report.nasdaq100_score = composite
             report.nasdaq100_recommendation = self._score_to_recommendation(composite)
             report.nasdaq100_entry_type = self._score_to_entry_type(composite)
@@ -353,7 +383,7 @@ class MarketAnalyzer:
         if report.swda:
             tech_score = report.swda.technical_score
             cape_score = report.swda.cape_analysis.valuation_score if report.swda.cape_analysis else 0
-            composite = tech_score * 0.30 + cape_score * 0.25 + liquidity_score * 0.45
+            composite = tech_score * 0.25 + cape_score * 0.20 + liquidity_score * 0.40 + regime_bonus_swda * 0.15
             report.swda_score = composite
             report.swda_recommendation = self._score_to_recommendation(composite)
             report.swda_entry_type = self._score_to_entry_type(composite)
@@ -362,7 +392,7 @@ class MarketAnalyzer:
         if report.csndx:
             tech_score = report.csndx.technical_score
             cape_score = report.csndx.cape_analysis.valuation_score if report.csndx.cape_analysis else 0
-            composite = tech_score * 0.30 + cape_score * 0.35 + liquidity_score * 0.35
+            composite = tech_score * 0.25 + cape_score * 0.30 + liquidity_score * 0.30 + regime_bonus_csndx * 0.15
             report.csndx_score = composite
             report.csndx_recommendation = self._score_to_recommendation(composite)
             report.csndx_entry_type = self._score_to_entry_type(composite)
@@ -434,6 +464,15 @@ class MarketAnalyzer:
 
     def _generate_summary(self, report: MarketReport) -> str:
         lines = []
+
+        # Regime di mercato
+        if report.regime_report and report.regime_report.dominant_regime:
+            rr = report.regime_report
+            lines.append(
+                f"REGIME: {rr.dominant_regime_emoji} {rr.dominant_regime} "
+                f"(concordanza asset: {rr.concordance:.0%}). "
+                f"{rr.market_phase_description[:150]}"
+            )
 
         if report.cape_sp500:
             c = report.cape_sp500
