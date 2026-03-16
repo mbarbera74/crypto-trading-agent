@@ -300,6 +300,9 @@ class AccumulationMonitor:
                     drawdown_from_ath=sig.drawdown_from_ath,
                     ath_price=sig.ath_price,
                     drawdown_from_52w=sig.drawdown_from_52w,
+                    regime_name=sig.regime_name,
+                    regime_emoji=sig.regime_emoji,
+                    regime_strategy=sig.regime_strategy,
                 )
                 self.notifier.send_accumulation_signal(**kwargs)
                 if self.telegram.enabled:

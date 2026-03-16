@@ -54,7 +54,9 @@ class WhatsAppNotifier:
                                   entry_price: float, probability: float,
                                   recommendation: str, cape_info: str = "",
                                   drawdown_from_ath: float = 0.0, ath_price: float = 0.0,
-                                  drawdown_from_52w: float = 0.0):
+                                  drawdown_from_52w: float = 0.0,
+                                  regime_name: str = "", regime_emoji: str = "",
+                                  regime_strategy: str = ""):
         """Invia segnale di accumulo formattato per WhatsApp."""
         emoji = {"COMPRA": "🟢", "ATTENDI": "🟡", "EVITA": "🔴"}.get(action, "⚪")
 
@@ -69,6 +71,10 @@ class WhatsAppNotifier:
             f"📈 Probabilità 90gg: {probability:.0%}\n"
             f"⚖️ Score composito: {score:+.2f}\n"
         )
+        if regime_name:
+            msg += f"🔮 Regime HMM: {regime_emoji} {regime_name}\n"
+            if regime_strategy:
+                msg += f"   → {regime_strategy}\n"
         if cape_info:
             msg += f"📊 CAPE: {cape_info}\n"
         msg += (

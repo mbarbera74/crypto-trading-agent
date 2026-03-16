@@ -552,27 +552,47 @@ def cmd_markets(args):
 
 
 def _build_verdict(report) -> str:
-    """Costruisce il verdetto finale combinando CAPE, liquidità, tecnica e livelli."""
+    """Costruisce il verdetto finale combinando CAPE, liquidità, tecnica, livelli e regime HMM."""
     lines = []
 
-    # --- Regime di mercato ---
+    # --- Regime di mercato (HMM) ---
     cape_sp = report.cape_sp500
     liq = report.liquidity_analysis
-    regime_color = "yellow"
-    if cape_sp and cape_sp.cape_value > 35:
-        regime = "MERCATO CARO"
-        regime_color = "red"
-    elif cape_sp and cape_sp.cape_value > 25:
-        regime = "MERCATO MODERATAMENTE CARO"
-        regime_color = "yellow"
-    elif cape_sp and cape_sp.cape_value > 18:
-        regime = "MERCATO NELLA NORMA"
-        regime_color = "green"
-    else:
-        regime = "MERCATO SOTTOVALUTATO"
-        regime_color = "green"
 
-    lines.append(f"[{regime_color}][bold]🌐 REGIME: {regime}[/bold][/{regime_color}]")
+    # Regime HMM (se disponibile)
+    if report.regime_report and report.regime_report.dominant_regime:
+        rr = report.regime_report
+        hmm_regime = rr.dominant_regime
+        hmm_emoji = rr.dominant_regime_emoji
+        hmm_color_map = {
+            "Strong Bull": "green", "Bull Trend": "green", "Recovery": "yellow",
+            "Consolidation": "yellow", "High Volatility": "red",
+            "Correction": "red", "Bear Market": "red",
+        }
+        hmm_color = hmm_color_map.get(hmm_regime, "yellow")
+        lines.append(f"[{hmm_color}][bold]{hmm_emoji} REGIME HMM: {hmm_regime}[/bold][/{hmm_color}]")
+        lines.append(f"   Concordanza asset: {rr.concordance:.0%}")
+        # Dettaglio per asset
+        for key, result in [("S&P 500", rr.sp500), ("NASDAQ 100", rr.nasdaq100), ("MSCI World", rr.msci_world)]:
+            if result:
+                lines.append(f"   {result.regime_emoji} {key}: {result.current_regime} ({result.days_in_regime}gg)")
+    else:
+        # Fallback: regime basato su CAPE
+        regime_color = "yellow"
+        if cape_sp and cape_sp.cape_value > 35:
+            regime = "MERCATO CARO"
+            regime_color = "red"
+        elif cape_sp and cape_sp.cape_value > 25:
+            regime = "MERCATO MODERATAMENTE CARO"
+            regime_color = "yellow"
+        elif cape_sp and cape_sp.cape_value > 18:
+            regime = "MERCATO NELLA NORMA"
+            regime_color = "green"
+        else:
+            regime = "MERCATO SOTTOVALUTATO"
+            regime_color = "green"
+        lines.append(f"[{regime_color}][bold]🌐 REGIME: {regime}[/bold][/{regime_color}]")
+
     if cape_sp:
         lines.append(f"   CAPE S&P 500 a {cape_sp.cape_value:.1f} ({cape_sp.valuation_level})")
     if liq:
@@ -686,6 +706,7 @@ def cmd_monitor(args):
         table.add_column("Prezzo", style="green", justify="right")
         table.add_column("Score", justify="right")
         table.add_column("Azione", justify="center")
+        table.add_column("Regime", justify="center")
         table.add_column("Livello Target", justify="right")
         table.add_column("Prob. 90gg", justify="right")
         table.add_column("Trend", justify="center")
@@ -697,11 +718,14 @@ def cmd_monitor(args):
             target = f"{sig.currency}{sig.best_entry_price:,.2f}" if sig.best_entry_price else "—"
             prob = f"{sig.best_entry_prob:.0%}" if sig.best_entry_prob else "—"
 
+            regime_str = f"{sig.regime_emoji} {sig.regime_name}" if sig.regime_name else "—"
+
             table.add_row(
                 sig.asset_name,
                 f"{sig.currency}{sig.current_price:,.2f}",
                 f"[{'green' if sig.score > 0 else 'red'}]{sig.score:+.2f}[/]",
                 f"[{color}]{emoji} {sig.action}[/]",
+                regime_str,
                 target,
                 prob,
                 sig.trend,
@@ -713,6 +737,9 @@ def cmd_monitor(args):
         for sig in signals:
             console.print(f"\n[bold]{sig.asset_name}[/bold]")
             console.print(f"  RSI: {sig.rsi:.0f} | 1M: {sig.price_change_1m:+.1f}%")
+            if sig.regime_name:
+                console.print(f"  🔮 Regime: {sig.regime_emoji} {sig.regime_name} (bonus: {sig.regime_bonus:+.2f})")
+                console.print(f"  → {sig.regime_strategy}")
             if sig.cape_info:
                 console.print(f"  CAPE: {sig.cape_info}")
             console.print(f"  → {sig.recommendation}")

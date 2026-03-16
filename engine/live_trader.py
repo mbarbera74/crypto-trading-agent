@@ -134,8 +134,21 @@ class LiveTrader:
             if self.use_ml and self.ml_predictor:
                 ml_prediction = self.ml_predictor.predict(df_indicators)
 
+            # 3.5 Regime HMM (opzionale)
+            current_regime = None
+            try:
+                from analysis.regime_detector import RegimeDetector
+                detector = RegimeDetector()
+                btc_regime = detector.get_regime_for_asset("btc")
+                if btc_regime:
+                    current_regime = btc_regime.current_regime
+                    logger.info(f"Regime BTC: {btc_regime.regime_emoji} {current_regime} "
+                                f"({btc_regime.days_in_regime}gg, bonus={btc_regime.accumulation_bonus:+.2f})")
+            except Exception as e:
+                logger.debug(f"Regime HMM non disponibile: {e}")
+
             # 4. Genera segnale
-            signal = self.strategy.analyze(df_indicators, ml_prediction=ml_prediction)
+            signal = self.strategy.analyze(df_indicators, ml_prediction=ml_prediction, regime=current_regime)
 
             # 5. Log del segnale
             current_signals = TechnicalIndicators.get_current_signals(df_indicators)

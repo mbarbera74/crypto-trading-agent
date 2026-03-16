@@ -806,11 +806,25 @@ with tab_crypto:
 
         signal_color = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}
 
+        # Regime BTC
+        btc_regime_text = ""
+        try:
+            detector = RegimeDetector()
+            btc_regime = detector.get_regime_for_asset("btc")
+            if btc_regime:
+                btc_regime_text = (
+                    f" | Regime: {btc_regime.regime_emoji} {btc_regime.current_regime} "
+                    f"({btc_regime.days_in_regime}gg, {btc_regime.strategy_suggestion.split(' - ')[0]})"
+                )
+        except Exception:
+            pass
+
         st.info(
             f"{signal_color.get(current_signal.signal.value, '⚪')} "
             f"**Segnale: {current_signal.signal.value}** | "
             f"Confidenza: {current_signal.confidence:.0%} | "
             f"Motivi: {', '.join(current_signal.reasons[:3])}"
+            f"{btc_regime_text}"
         )
 
         # GRAFICO PRINCIPALE
@@ -957,7 +971,7 @@ with tab_futures:
 
             st.markdown(f"## {emoji} Direzione attesa: **:{color}[{ol.direction}]**")
 
-            col_o1, col_o2, col_o3, col_o4 = st.columns(4)
+            col_o1, col_o2, col_o3, col_o4, col_o5 = st.columns(5)
             with col_o1:
                 st.metric("Confidenza", f"{ol.confidence:.0%}")
             with col_o2:
@@ -967,6 +981,16 @@ with tab_futures:
                 st.metric("Rischio", ol.risk_level)
             with col_o4:
                 st.metric("VIX", f"{fa.vix_current:.1f}", f"{fa.vix_change:+.1f}%")
+            with col_o5:
+                # Regime dominante (SP500)
+                try:
+                    detector = RegimeDetector()
+                    sp_regime = detector.get_regime_for_asset("sp500")
+                    if sp_regime:
+                        st.metric("Regime HMM", f"{sp_regime.regime_emoji} {sp_regime.current_regime}",
+                                  f"{sp_regime.days_in_regime}gg")
+                except Exception:
+                    st.metric("Regime HMM", "N/A")
 
         # ── FUTURES DETTAGLIO ──
         st.divider()
@@ -1109,6 +1133,24 @@ with tab_markets:
     render_asset_chart(col_n, ndx_data, "NASDAQ 100", "^NDX", "cyan", "$")
     render_asset_chart(col_s, swda_data, "SWDA.MI", "SWDA.MI", "lime", "€")
     render_asset_chart(col_c, csndx_data, "CSNDX", "CNDX.MI", "#ff88ff", "€")
+
+    # Mostra regime per ogni asset nel tab Markets
+    try:
+        detector = RegimeDetector()
+        regime_cols = st.columns(3)
+        for col_r, (key, label) in zip(regime_cols, [
+            ("nasdaq100", "NASDAQ 100"), ("msci_world", "MSCI World (SWDA)"), ("nasdaq100", "CSNDX (NDX)"),
+        ]):
+            with col_r:
+                r = detector.get_regime_for_asset(key)
+                if r:
+                    st.markdown(
+                        f"**{r.regime_emoji} {label}:** {r.current_regime} "
+                        f"(conf. {r.confidence:.0%}, {r.days_in_regime}gg) — "
+                        f"{r.strategy_suggestion.split(' - ')[0]}"
+                    )
+    except Exception:
+        pass
 
     # ============================
     # BACKTEST ASSET TRADIZIONALI

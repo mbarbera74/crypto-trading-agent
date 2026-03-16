@@ -103,6 +103,22 @@ def get_daily_market_context() -> str:
     if news_parts:
         parts.append("News recenti:")
         parts.extend(news_parts)
+
+    # Regime HMM
+    try:
+        from analysis.regime_detector import RegimeDetector
+        detector = RegimeDetector()
+        for key, label in [("sp500", "S&P 500"), ("nasdaq100", "NASDAQ 100"), ("msci_world", "MSCI World")]:
+            r = detector.get_regime_for_asset(key)
+            if r:
+                parts.append(
+                    f"Regime HMM {label}: {r.current_regime} "
+                    f"(conf. {r.confidence:.0%}, {r.days_in_regime}gg, "
+                    f"prev: {r.previous_regime}, strategia: {r.strategy_suggestion})"
+                )
+    except Exception:
+        pass
+
     return "\n".join(parts)
 
 

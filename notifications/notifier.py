@@ -108,7 +108,9 @@ class TelegramNotifier:
     def send_accumulation_signal(self, asset_name: str, action: str, price: float,
                                   currency: str, score: float, entry_level: str,
                                   entry_price: float, probability: float,
-                                  recommendation: str, cape_info: str = ""):
+                                  recommendation: str, cape_info: str = "",
+                                  regime_name: str = "", regime_emoji: str = "",
+                                  regime_strategy: str = "", **kwargs):
         """Invia segnale di accumulo formattato per Telegram."""
         emoji = {"COMPRA": "🟢", "ATTENDI": "🟡", "EVITA": "🔴"}.get(action, "⚪")
         msg = (
@@ -120,6 +122,10 @@ class TelegramNotifier:
             f"📈 Prob\\. 90gg: `{probability:.0%}`\n"
             f"⚖️ Score: `{score:+.2f}`\n"
         )
+        if regime_name:
+            msg += f"🔮 Regime: {regime_emoji} {regime_name}\n"
+            if regime_strategy:
+                msg += f"   → {regime_strategy}\n"
         if cape_info:
             msg += f"📉 CAPE: {cape_info}\n"
         msg += (
