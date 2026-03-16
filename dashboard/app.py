@@ -626,7 +626,7 @@ with tab_regime:
                     st.markdown(f"**Confidenza:** {result.confidence:.1%}")
                     st.markdown(f"**Regime rilevato da:** {result.days_in_regime} giorni")
                     # Drawdown reale dal massimo
-                    if result.max_price > 0:
+                    if getattr(result, 'max_price', 0) > 0:
                         dd_color = "red" if result.drawdown_pct < -20 else "orange" if result.drawdown_pct < -10 else "green"
                         st.markdown(
                             f"**Drawdown dal max:** "
