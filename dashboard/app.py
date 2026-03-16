@@ -1516,6 +1516,25 @@ with tab_monitor:
                         st.success("🟢 Vicino ai massimi (<5%). Attendere pullback o usare DCA stretto.")
 
                 st.write(f"📈 Trend: **{ma['asset'].trend}** | RSI: {ma['asset'].rsi:.0f}")
+
+                # Regime HMM
+                if report.regime_report:
+                    rr = report.regime_report
+                    # CSNDX e NDX usano regime NASDAQ, SWDA usa MSCI World
+                    asset_regime = None
+                    if "CSNDX" in ma["name"]:
+                        asset_regime = rr.nasdaq100 or rr.sp500
+                    elif "SWDA" in ma["name"]:
+                        asset_regime = rr.msci_world or rr.sp500
+                    if asset_regime:
+                        bonus = asset_regime.accumulation_bonus
+                        bonus_color = "green" if bonus > 0 else "red" if bonus < 0 else "gray"
+                        st.markdown(
+                            f"🔮 **Regime HMM:** {asset_regime.regime_emoji} {asset_regime.current_regime} "
+                            f"(conf. {asset_regime.confidence:.0%}, {asset_regime.days_in_regime}gg)"
+                        )
+                        st.markdown(f"   Bonus accumulo: :{bonus_color}[**{bonus:+.2f}**] — {asset_regime.strategy_suggestion}")
+
                 if ma['asset'].cape_analysis:
                     ca = ma['asset'].cape_analysis
                     st.write(f"📉 CAPE: {ca.cape_value:.1f} ({ca.valuation_level})")
