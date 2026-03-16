@@ -157,10 +157,10 @@ ASSET_CONFIG = {
         "fallbacks": ["SWDA.MI", "SWDA.L", "IWDA.AS"],
     },
     "csndx": {
-        "ticker": "CNDX.MI",
+        "ticker": "CSNDX.MI",
         "name": "CSNDX (iShares NDX)",
         "years": 12,
-        "fallbacks": ["CSNDX.MI", "SXRV.DE"],
+        "fallbacks": ["SXRV.DE"],
     },
     "swda": {
         "ticker": "SWDA.MI",
