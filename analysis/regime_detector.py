@@ -104,6 +104,11 @@ class RegimeResult:
     days_in_regime: int = 0       # Da quanti giorni siamo in questo regime
     previous_regime: str = ""     # Regime precedente
     transition_date: str = ""     # Data ultima transizione
+    # Drawdown reale dal massimo
+    drawdown_pct: float = 0.0     # Drawdown % dal massimo del periodo
+    max_price: float = 0.0        # Prezzo massimo del periodo
+    max_price_date: str = ""      # Data del massimo
+    current_price: float = 0.0    # Prezzo corrente
     # Serie storica dei regimi (per grafici)
     regime_history: Optional[pd.DataFrame] = None
     # Probabilità di transizione prossimo regime
@@ -308,6 +313,13 @@ class RegimeDetector:
         })
         regime_history.set_index("date", inplace=True)
 
+        # Calcola drawdown reale dal massimo del periodo
+        max_price = df["close"].max()
+        max_price_idx = df["close"].idxmax()
+        max_price_date = str(max_price_idx.date()) if hasattr(max_price_idx, 'date') else str(max_price_idx)
+        current_price = df["close"].iloc[-1]
+        drawdown_pct = (current_price / max_price - 1) * 100 if max_price > 0 else 0.0
+
         result = RegimeResult(
             asset_name=asset_name or ticker,
             ticker=ticker,
@@ -321,6 +333,10 @@ class RegimeDetector:
             days_in_regime=days_in_regime,
             previous_regime=prev_regime,
             transition_date=transition_date,
+            drawdown_pct=drawdown_pct,
+            max_price=max_price,
+            max_price_date=max_price_date,
+            current_price=current_price,
             transition_probs=transition_probs,
             regime_history=regime_history,
         )

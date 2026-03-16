@@ -624,7 +624,16 @@ with tab_regime:
                     st.markdown(f"### {result.regime_emoji} {asset_name}")
                     st.markdown(f"**Regime:** {result.current_regime}")
                     st.markdown(f"**Confidenza:** {result.confidence:.1%}")
-                    st.markdown(f"**In regime da:** {result.days_in_regime} giorni")
+                    st.markdown(f"**Regime rilevato da:** {result.days_in_regime} giorni")
+                    # Drawdown reale dal massimo
+                    if result.max_price > 0:
+                        dd_color = "red" if result.drawdown_pct < -20 else "orange" if result.drawdown_pct < -10 else "green"
+                        st.markdown(
+                            f"**Drawdown dal max:** "
+                            f":{dd_color}[{result.drawdown_pct:.1f}%]  \n"
+                            f"Max: {result.max_price:,.0f} ({result.max_price_date})  \n"
+                            f"Ora: {result.current_price:,.0f}"
+                        )
                     if result.previous_regime:
                         st.markdown(f"**Precedente:** {result.previous_regime}")
                         st.markdown(f"**Transizione:** {result.transition_date}")
