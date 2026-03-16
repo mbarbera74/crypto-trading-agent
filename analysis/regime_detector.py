@@ -455,8 +455,13 @@ class RegimeDetector:
         return features, valid_dates
 
     def _fit_model(self, ticker: str, features: np.ndarray) -> Optional[GaussianHMM]:
-        """Fit dell'HMM sui dati. Usa modello cachato se disponibile."""
+        """Fit dell'HMM sui dati. Riusa modello in memoria se disponibile."""
         cache_key = ticker.replace("^", "").replace("=", "").replace("-", "_")
+
+        # Riusa modello già in memoria (stesso processo) per consistenza tra tab
+        if cache_key in self._models:
+            logger.debug(f"Riuso modello HMM in memoria per {ticker}")
+            return self._models[cache_key]
 
         try:
             model = GaussianHMM(
@@ -465,6 +470,7 @@ class RegimeDetector:
                 n_iter=self.N_ITER,
                 random_state=self.RANDOM_STATE,
                 verbose=False,
+                init_params="stmc",
             )
             model.fit(features)
             logger.info(f"HMM fit per {ticker}: score={model.score(features):.2f}")

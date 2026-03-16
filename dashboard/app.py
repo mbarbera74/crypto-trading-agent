@@ -89,6 +89,24 @@ st_autorefresh(interval=60_000, limit=None, key="global_refresh")
 # ============================
 # Ticker Yahoo per gli asset del backtest
 _LIVE_TICKERS = {
+
+# ============================
+# REGIME HMM CACHE GLOBALE
+# ============================
+@st.cache_resource(ttl=3600)
+def _get_regime_detector():
+    """Istanza singleton del RegimeDetector, condivisa tra tutti i tab."""
+    return RegimeDetector()
+
+
+@st.cache_data(ttl=3600, show_spinner="Analisi regimi HMM...")
+def _get_cached_regime_report():
+    """Esegue l'analisi regime una sola volta, risultato condiviso tra tutti i tab."""
+    detector = _get_regime_detector()
+    return detector.full_analysis()
+
+
+_LIVE_TICKERS = {
     "BTC": {"yahoo": "BTC-USD", "label": "BTC", "currency": "$", "period": "3mo"},
     "NDX": {"yahoo": "^NDX", "label": "NDX", "currency": "$", "period": "1y"},
     "SPX": {"yahoo": "^GSPC", "label": "S&P 500", "currency": "$", "period": "1y"},
@@ -566,12 +584,12 @@ with tab_regime:
 
     @st.cache_data(ttl=3600, show_spinner="Analisi regimi in corso (può richiedere 1-2 minuti)...")
     def run_regime_analysis():
-        """Esegue l'analisi di regime su tutti gli asset."""
-        detector = RegimeDetector()
-        return detector.full_analysis()
+        """Esegue l'analisi di regime su tutti gli asset (usa cache globale)."""
+        return _get_cached_regime_report()
 
     if st.button("🔄 Esegui Analisi Regime", key="btn_regime"):
         st.cache_data.clear()
+        st.cache_resource.clear()
 
     regime_report = run_regime_analysis()
 
@@ -809,8 +827,8 @@ with tab_crypto:
         # Regime BTC
         btc_regime_text = ""
         try:
-            detector = RegimeDetector()
-            btc_regime = detector.get_regime_for_asset("btc")
+            rr = _get_cached_regime_report()
+            btc_regime = rr.btc if rr else None
             if btc_regime:
                 btc_regime_text = (
                     f" | Regime: {btc_regime.regime_emoji} {btc_regime.current_regime} "
@@ -984,8 +1002,8 @@ with tab_futures:
             with col_o5:
                 # Regime dominante (SP500)
                 try:
-                    detector = RegimeDetector()
-                    sp_regime = detector.get_regime_for_asset("sp500")
+                    rr = _get_cached_regime_report()
+                    sp_regime = rr.sp500 if rr else None
                     if sp_regime:
                         st.metric("Regime HMM", f"{sp_regime.regime_emoji} {sp_regime.current_regime}",
                                   f"{sp_regime.days_in_regime}gg")
@@ -1136,19 +1154,20 @@ with tab_markets:
 
     # Mostra regime per ogni asset nel tab Markets
     try:
-        detector = RegimeDetector()
-        regime_cols = st.columns(3)
-        for col_r, (key, label) in zip(regime_cols, [
-            ("nasdaq100", "NASDAQ 100"), ("msci_world", "MSCI World (SWDA)"), ("nasdaq100", "CSNDX (NDX)"),
-        ]):
-            with col_r:
-                r = detector.get_regime_for_asset(key)
-                if r:
-                    st.markdown(
-                        f"**{r.regime_emoji} {label}:** {r.current_regime} "
-                        f"(conf. {r.confidence:.0%}, {r.days_in_regime}gg) — "
-                        f"{r.strategy_suggestion.split(' - ')[0]}"
-                    )
+        rr = _get_cached_regime_report()
+        if rr:
+            regime_cols = st.columns(3)
+            for col_r, (key, label) in zip(regime_cols, [
+                ("nasdaq100", "NASDAQ 100"), ("msci_world", "MSCI World (SWDA)"), ("nasdaq100", "CSNDX (NDX)"),
+            ]):
+                with col_r:
+                    r = getattr(rr, key, None)
+                    if r:
+                        st.markdown(
+                            f"**{r.regime_emoji} {label}:** {r.current_regime} "
+                            f"(conf. {r.confidence:.0%}, {r.days_in_regime}gg) — "
+                            f"{r.strategy_suggestion.split(' - ')[0]}"
+                        )
     except Exception:
         pass
 
@@ -1560,14 +1579,14 @@ with tab_monitor:
                 st.write(f"📈 Trend: **{ma['asset'].trend}** | RSI: {ma['asset'].rsi:.0f}")
 
                 # Regime HMM
-                if report.regime_report:
-                    rr = report.regime_report
+                regime_source = report.regime_report or _get_cached_regime_report()
+                if regime_source:
                     # CSNDX e NDX usano regime NASDAQ, SWDA usa MSCI World
                     asset_regime = None
                     if "CSNDX" in ma["name"]:
-                        asset_regime = rr.nasdaq100 or rr.sp500
+                        asset_regime = regime_source.nasdaq100 or regime_source.sp500
                     elif "SWDA" in ma["name"]:
-                        asset_regime = rr.msci_world or rr.sp500
+                        asset_regime = regime_source.msci_world or regime_source.sp500
                     if asset_regime:
                         bonus = asset_regime.accumulation_bonus
                         bonus_color = "green" if bonus > 0 else "red" if bonus < 0 else "gray"
