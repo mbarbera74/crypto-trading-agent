@@ -631,6 +631,8 @@ with tab_regime:
             ("S&P 500", regime_report.sp500),
             ("NASDAQ 100", regime_report.nasdaq100),
             ("MSCI World", regime_report.msci_world),
+            ("CSNDX", getattr(regime_report, 'csndx', None)),
+            ("SWDA", getattr(regime_report, 'swda', None)),
             ("Bitcoin", regime_report.btc),
         ]
 
@@ -1158,7 +1160,7 @@ with tab_markets:
         if rr:
             regime_cols = st.columns(3)
             for col_r, (key, label) in zip(regime_cols, [
-                ("nasdaq100", "NASDAQ 100"), ("msci_world", "MSCI World (SWDA)"), ("nasdaq100", "CSNDX (NDX)"),
+                ("nasdaq100", "NASDAQ 100"), ("swda", "SWDA.MI"), ("csndx", "CSNDX"),
             ]):
                 with col_r:
                     r = getattr(rr, key, None)
@@ -1581,12 +1583,12 @@ with tab_monitor:
                 # Regime HMM
                 regime_source = report.regime_report or _get_cached_regime_report()
                 if regime_source:
-                    # CSNDX e NDX usano regime NASDAQ, SWDA usa MSCI World
+                    # Ogni asset usa il suo regime HMM dedicato (con fallback)
                     asset_regime = None
                     if "CSNDX" in ma["name"]:
-                        asset_regime = regime_source.nasdaq100 or regime_source.sp500
+                        asset_regime = getattr(regime_source, 'csndx', None) or regime_source.nasdaq100 or regime_source.sp500
                     elif "SWDA" in ma["name"]:
-                        asset_regime = regime_source.msci_world or regime_source.sp500
+                        asset_regime = getattr(regime_source, 'swda', None) or regime_source.msci_world or regime_source.sp500
                     if asset_regime:
                         bonus = asset_regime.accumulation_bonus
                         bonus_color = "green" if bonus > 0 else "red" if bonus < 0 else "gray"

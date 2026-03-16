@@ -359,16 +359,20 @@ class MarketAnalyzer:
 
         if report.regime_report:
             rr = report.regime_report
-            # NASDAQ 100 e CSNDX usano il regime NDX (o SP500 come fallback)
+            # NASDAQ 100 usa il suo regime
             ndx_regime = rr.nasdaq100 or rr.sp500
             if ndx_regime:
                 regime_bonus_ndx = ndx_regime.accumulation_bonus
-                regime_bonus_csndx = ndx_regime.accumulation_bonus
 
-            # SWDA usa il regime MSCI World (o SP500 come fallback)
-            world_regime = rr.msci_world or rr.sp500
-            if world_regime:
-                regime_bonus_swda = world_regime.accumulation_bonus
+            # CSNDX ha il suo regime HMM dedicato (con fallback a NDX)
+            csndx_regime = getattr(rr, 'csndx', None) or rr.nasdaq100 or rr.sp500
+            if csndx_regime:
+                regime_bonus_csndx = csndx_regime.accumulation_bonus
+
+            # SWDA ha il suo regime HMM dedicato (con fallback a MSCI World)
+            swda_regime = getattr(rr, 'swda', None) or rr.msci_world or rr.sp500
+            if swda_regime:
+                regime_bonus_swda = swda_regime.accumulation_bonus
 
         # NASDAQ 100 (^NDX)
         if report.nasdaq100:

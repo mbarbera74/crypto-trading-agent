@@ -94,19 +94,18 @@ class AccumulationMonitor:
         # Recupera news importanti
         market_news = self._fetch_important_news()
 
-        # Regime per ogni asset (dal report)
+        # Regime per ogni asset (dal report, ognuno col suo modello HMM separato)
         regime_info = {}
         if report.regime_report:
             rr = report.regime_report
-            # CSNDX e NDX usano regime NASDAQ (o SP500 fallback)
-            ndx_regime = rr.nasdaq100 or rr.sp500
-            if ndx_regime:
-                regime_info["CSNDX"] = ndx_regime
-                regime_info["NDX"] = ndx_regime
-            # SWDA usa regime MSCI World (o SP500 fallback)
-            world_regime = rr.msci_world or rr.sp500
-            if world_regime:
-                regime_info["SWDA"] = world_regime
+            # CSNDX ha il suo regime HMM dedicato (con fallback a NDX, poi SP500)
+            csndx_regime = getattr(rr, 'csndx', None) or rr.nasdaq100 or rr.sp500
+            if csndx_regime:
+                regime_info["CSNDX"] = csndx_regime
+            # SWDA ha il suo regime HMM dedicato (con fallback a MSCI World, poi SP500)
+            swda_regime = getattr(rr, 'swda', None) or rr.msci_world or rr.sp500
+            if swda_regime:
+                regime_info["SWDA"] = swda_regime
 
         signals = []
 

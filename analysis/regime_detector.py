@@ -122,6 +122,8 @@ class MultiAssetRegimeReport:
     sp500: Optional[RegimeResult] = None
     nasdaq100: Optional[RegimeResult] = None
     msci_world: Optional[RegimeResult] = None
+    csndx: Optional[RegimeResult] = None
+    swda: Optional[RegimeResult] = None
     btc: Optional[RegimeResult] = None
     # Regime dominante (basato su S&P 500 come benchmark)
     dominant_regime: str = ""
@@ -153,6 +155,18 @@ ASSET_CONFIG = {
         "name": "MSCI World",
         "years": 12,
         "fallbacks": ["SWDA.MI", "SWDA.L", "IWDA.AS"],
+    },
+    "csndx": {
+        "ticker": "CNDX.MI",
+        "name": "CSNDX (iShares NDX)",
+        "years": 12,
+        "fallbacks": ["CSNDX.MI", "SXRV.DE"],
+    },
+    "swda": {
+        "ticker": "SWDA.MI",
+        "name": "SWDA (iShares MSCI World)",
+        "years": 12,
+        "fallbacks": ["SWDA.L", "IWDA.AS"],
     },
     "btc": {
         "ticker": "BTC-USD",
@@ -587,7 +601,7 @@ class RegimeDetector:
     def _calc_concordance(self, report: MultiAssetRegimeReport) -> float:
         """Calcola quanto i vari asset concordano sul tipo di regime."""
         regimes = []
-        for key in ["sp500", "nasdaq100", "msci_world", "btc"]:
+        for key in ["sp500", "nasdaq100", "msci_world", "csndx", "swda", "btc"]:
             result = getattr(report, key, None)
             if result:
                 regimes.append(result.regime_id)
