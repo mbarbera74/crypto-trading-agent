@@ -505,8 +505,14 @@ class RegimeDetector:
         """
         Mappa gli stati raw dell'HMM ai 7 regimi interpretativi.
 
-        L'HMM assegna numeri arbitrari agli stati. Li riordiniamo in base
-        al rendimento medio e alla volatilità media di ogni stato.
+        Usa soglie assolute su rendimento e volatilità per classificare:
+        - Strong Bull (0): ret > 0.0015, vol bassa
+        - Bull Trend (1): ret > 0.0005, vol bassa/media
+        - Recovery (2): ret > 0.001, vol alta
+        - Consolidation (3): |ret| < 0.0005, vol bassa/media
+        - High Volatility (4): |ret| piccolo, vol alta
+        - Correction (5): ret < -0.0005, vol alta
+        - Bear Market (6): ret < -0.002, vol alta
         """
         n_states = model.n_components
         state_stats = []
@@ -520,67 +526,58 @@ class RegimeDetector:
             state_features = features[mask]
             state_stats.append({
                 "state": s,
-                "mean_return": np.mean(state_features[:, 0]),   # returns
-                "mean_vol": np.mean(state_features[:, 1]),      # volatilità
+                "mean_return": np.mean(state_features[:, 0]),
+                "mean_vol": np.mean(state_features[:, 1]),
                 "count": mask.sum(),
             })
 
-        # Ordina per rendimento medio (dal più alto al più basso)
-        sorted_stats = sorted(state_stats, key=lambda x: x["mean_return"], reverse=True)
-
-        # Separazione basata su rendimento e volatilità
-        # Top rendimento + bassa vol → Strong Bull (0)
-        # Top rendimento + alta vol → Recovery (2)
-        # Rendimento positivo moderato → Bull Trend (1)
-        # Rendimento ~0 + bassa vol → Consolidation (3)
-        # Rendimento ~0 + alta vol → High Volatility (4)
-        # Rendimento negativo moderato → Correction (5)
-        # Rendimento molto negativo → Bear Market (6)
-
+        median_vol = np.median([s["mean_vol"] for s in state_stats if s["count"] > 0])
+        high_vol = median_vol * 1.3
         mapping = {}
-        median_vol = np.median([s["mean_vol"] for s in sorted_stats if s["count"] > 0])
 
-        for rank, stats in enumerate(sorted_stats):
+        # Classifica ogni stato in base a rendimento e volatilità assoluti
+        for stats in state_stats:
             raw_state = stats["state"]
             ret = stats["mean_return"]
             vol = stats["mean_vol"]
 
-            if rank == 0:
-                # Miglior rendimento
-                if vol <= median_vol:
-                    mapping[raw_state] = 0  # Strong Bull
-                else:
-                    mapping[raw_state] = 2  # Recovery (high return + high vol)
-            elif rank == 1:
-                if vol <= median_vol:
-                    mapping[raw_state] = 1  # Bull Trend
-                else:
-                    mapping[raw_state] = 0 if 0 not in mapping.values() else 2  # Strong Bull o Recovery
-            elif rank in (2, 3):
-                # Rendimento medio
-                if ret > 0:
-                    if vol > median_vol:
-                        mapping[raw_state] = 2 if 2 not in mapping.values() else 4  # Recovery o HighVol
-                    else:
-                        mapping[raw_state] = 1 if 1 not in mapping.values() else 3  # Bull o Consolidation
-                else:
-                    if vol > median_vol:
-                        mapping[raw_state] = 4  # High Volatility
-                    else:
-                        mapping[raw_state] = 3  # Consolidation
-            elif rank == 4:
-                mapping[raw_state] = 4 if 4 not in mapping.values() else 3  # HighVol o Consolidation
-            elif rank == 5:
-                mapping[raw_state] = 5  # Correction
-            else:
-                mapping[raw_state] = 6  # Bear Market
+            if stats["count"] == 0:
+                mapping[raw_state] = 3  # Consolidation default
+                continue
 
-        # Assicurati che tutti gli stati siano mappati
-        used_targets = set(mapping.values())
-        available_targets = [i for i in range(7) if i not in used_targets]
-        for s in range(n_states):
-            if s not in mapping:
-                mapping[s] = available_targets.pop(0) if available_targets else 3
+            if ret > 0.0015 and vol <= high_vol:
+                target = 0  # Strong Bull: forte rialzo, vol contenuta
+            elif ret > 0.001 and vol > high_vol:
+                target = 2  # Recovery: in salita ma volatile
+            elif ret > 0.0005 and vol <= high_vol:
+                target = 1  # Bull Trend: rialzo moderato, stabile
+            elif ret > 0.0005 and vol > high_vol:
+                target = 2  # Recovery
+            elif ret > -0.0005 and vol <= high_vol:
+                target = 3  # Consolidation: laterale, calmo
+            elif ret > -0.0005 and vol > high_vol:
+                target = 4  # High Volatility: laterale ma turbolento
+            elif ret > -0.002 and vol > high_vol:
+                target = 5  # Correction: calo con alta vol
+            elif ret > -0.002 and vol <= high_vol:
+                target = 5  # Correction: calo moderato anche se calmo
+            elif vol > high_vol:
+                target = 6  # Bear Market: forte calo + alta vol
+            else:
+                target = 5  # Calo forte ma bassa vol = Correction, non Bear Market
+
+            mapping[raw_state] = target
+
+        # Risolvi duplicati: se più stati mappano allo stesso regime,
+        # tieni quello con più campioni e reassegna gli altri al regime più vicino
+        target_counts = {}
+        for raw_state, target in mapping.items():
+            count = next(s["count"] for s in state_stats if s["state"] == raw_state)
+            if target not in target_counts or count > target_counts[target][1]:
+                target_counts[target] = (raw_state, count)
+
+        # Non forzare unicità — è OK se multipli stati mappano allo stesso regime
+        # (es. due tipi diversi di Consolidation)
 
         return mapping
 
