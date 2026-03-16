@@ -87,8 +87,6 @@ st_autorefresh(interval=60_000, limit=None, key="global_refresh")
 # ============================
 # FUNZIONI CACHE PER DATI LIVE
 # ============================
-# Ticker Yahoo per gli asset del backtest
-_LIVE_TICKERS = {
 
 # ============================
 # REGIME HMM CACHE GLOBALE
@@ -106,6 +104,7 @@ def _get_cached_regime_report():
     return detector.full_analysis()
 
 
+# Ticker Yahoo per gli asset del backtest
 _LIVE_TICKERS = {
     "BTC": {"yahoo": "BTC-USD", "label": "BTC", "currency": "$", "period": "3mo"},
     "NDX": {"yahoo": "^NDX", "label": "NDX", "currency": "$", "period": "1y"},
