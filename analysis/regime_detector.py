@@ -505,14 +505,17 @@ class RegimeDetector:
         """
         Mappa gli stati raw dell'HMM ai 7 regimi interpretativi.
 
-        Usa soglie assolute su rendimento e volatilità per classificare:
-        - Strong Bull (0): ret > 0.0015, vol bassa
-        - Bull Trend (1): ret > 0.0005, vol bassa/media
-        - Recovery (2): ret > 0.001, vol alta
-        - Consolidation (3): |ret| < 0.0005, vol bassa/media
-        - High Volatility (4): |ret| piccolo, vol alta
-        - Correction (5): ret < -0.0005, vol alta
-        - Bear Market (6): ret < -0.002, vol alta
+        Le soglie sono normalizzate per la volatilità storica dell'asset,
+        così funzionano sia per S&P 500 (vol ~1%) che per BTC (vol ~3-5%).
+
+        Classificazione basata su rendimento normalizzato (ret / vol_storica):
+        - Strong Bull (0): ret_norm > +0.10, vol_norm bassa
+        - Bull Trend (1): ret_norm > +0.04, vol_norm bassa/media
+        - Recovery (2): ret_norm > +0.06, vol_norm alta
+        - Consolidation (3): |ret_norm| < 0.04, vol_norm bassa/media
+        - High Volatility (4): |ret_norm| < 0.04, vol_norm alta
+        - Correction (5): ret_norm < -0.04
+        - Bear Market (6): ret_norm < -0.12, vol_norm alta
         """
         n_states = model.n_components
         state_stats = []
@@ -531,11 +534,16 @@ class RegimeDetector:
                 "count": mask.sum(),
             })
 
+        # Volatilità storica dell'intero dataset per normalizzazione
+        asset_vol = np.std(features[:, 0])  # std dei log returns giornalieri
+        if asset_vol < 1e-8:
+            asset_vol = 0.01  # fallback
+
         median_vol = np.median([s["mean_vol"] for s in state_stats if s["count"] > 0])
         high_vol = median_vol * 1.3
+
         mapping = {}
 
-        # Classifica ogni stato in base a rendimento e volatilità assoluti
         for stats in state_stats:
             raw_state = stats["state"]
             ret = stats["mean_return"]
@@ -545,39 +553,32 @@ class RegimeDetector:
                 mapping[raw_state] = 3  # Consolidation default
                 continue
 
-            if ret > 0.0015 and vol <= high_vol:
-                target = 0  # Strong Bull: forte rialzo, vol contenuta
-            elif ret > 0.001 and vol > high_vol:
+            # Normalizza rendimento per la volatilità dell'asset
+            ret_norm = ret / asset_vol
+            is_high_vol = vol > high_vol
+
+            if ret_norm > 0.10 and not is_high_vol:
+                target = 0  # Strong Bull: forte rialzo normalizzato, vol contenuta
+            elif ret_norm > 0.06 and is_high_vol:
                 target = 2  # Recovery: in salita ma volatile
-            elif ret > 0.0005 and vol <= high_vol:
+            elif ret_norm > 0.04 and not is_high_vol:
                 target = 1  # Bull Trend: rialzo moderato, stabile
-            elif ret > 0.0005 and vol > high_vol:
-                target = 2  # Recovery
-            elif ret > -0.0005 and vol <= high_vol:
+            elif ret_norm > 0.04 and is_high_vol:
+                target = 2  # Recovery: rialzo con volatilità
+            elif ret_norm > -0.04 and not is_high_vol:
                 target = 3  # Consolidation: laterale, calmo
-            elif ret > -0.0005 and vol > high_vol:
-                target = 4  # High Volatility: laterale ma turbolento
-            elif ret > -0.002 and vol > high_vol:
+            elif ret_norm > -0.04 and is_high_vol:
+                target = 4  # High Volatility: laterale turbolento
+            elif ret_norm > -0.12 and is_high_vol:
                 target = 5  # Correction: calo con alta vol
-            elif ret > -0.002 and vol <= high_vol:
-                target = 5  # Correction: calo moderato anche se calmo
-            elif vol > high_vol:
-                target = 6  # Bear Market: forte calo + alta vol
+            elif ret_norm > -0.12:
+                target = 5  # Correction: calo moderato
+            elif is_high_vol:
+                target = 6  # Bear Market: forte calo normalizzato + alta vol
             else:
-                target = 5  # Calo forte ma bassa vol = Correction, non Bear Market
+                target = 5  # Calo forte ma vol bassa = Correction
 
             mapping[raw_state] = target
-
-        # Risolvi duplicati: se più stati mappano allo stesso regime,
-        # tieni quello con più campioni e reassegna gli altri al regime più vicino
-        target_counts = {}
-        for raw_state, target in mapping.items():
-            count = next(s["count"] for s in state_stats if s["state"] == raw_state)
-            if target not in target_counts or count > target_counts[target][1]:
-                target_counts[target] = (raw_state, count)
-
-        # Non forzare unicità — è OK se multipli stati mappano allo stesso regime
-        # (es. due tipi diversi di Consolidation)
 
         return mapping
 
