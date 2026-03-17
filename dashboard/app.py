@@ -245,25 +245,23 @@ if _ticker_headlines:
         else:
             _ticker_items.append(f'{_time_badge}{_t}')
     _ticker_text = '  <span style="color:#e94560;">⚡</span>  '.join(_ticker_items)
-    st.markdown(f"""
+    import streamlit.components.v1 as components
+    _ticker_html = f"""
     <div style="
         background: linear-gradient(90deg, #1a1a2e, #16213e, #0f3460);
         padding: 8px 0;
         overflow: hidden;
         white-space: nowrap;
         border-bottom: 2px solid #e94560;
-        margin-bottom: 8px;
         border-radius: 4px;
-        height: 36px;
-        max-height: 36px;
-        line-height: 20px;
+        height: 30px;
     ">
-        <div style="
+        <div id="ticker" style="
             display: inline-block;
-            animation: marquee 180s linear infinite;
             color: #e0e0e0;
             font-size: 13px;
             font-family: 'Segoe UI', sans-serif;
+            white-space: nowrap;
         ">
             📰 <b style="color:#e94560">BREAKING</b> &nbsp;&nbsp;
             {_ticker_text}
@@ -272,13 +270,22 @@ if _ticker_headlines:
             {_ticker_text}
         </div>
     </div>
-    <style>
-        @keyframes marquee {{
-            0%   {{ transform: translateX(0%); }}
-            100% {{ transform: translateX(-50%); }}
+    <script>
+        const ticker = document.getElementById('ticker');
+        let pos = 0;
+        const speed = 1;
+        function scroll() {{
+            pos -= speed;
+            if (Math.abs(pos) >= ticker.scrollWidth / 2) {{
+                pos = 0;
+            }}
+            ticker.style.transform = 'translateX(' + pos + 'px)';
+            requestAnimationFrame(scroll);
         }}
-    </style>
-    """, unsafe_allow_html=True)
+        scroll();
+    </script>
+    """
+    components.html(_ticker_html, height=40)
 
 # ============================
 # BARRA PREZZI LIVE (pannello principale)
