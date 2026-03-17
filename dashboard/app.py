@@ -254,6 +254,9 @@ if _ticker_headlines:
         border-bottom: 2px solid #e94560;
         margin-bottom: 8px;
         border-radius: 4px;
+        height: 36px;
+        max-height: 36px;
+        line-height: 20px;
     ">
         <div style="
             display: inline-block;
