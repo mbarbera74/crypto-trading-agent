@@ -260,14 +260,15 @@ if _ticker_headlines:
     ">
         <div style="
             display: inline-block;
-            animation: marquee 90s linear infinite;
+            animation: marquee 180s linear infinite;
             color: #e0e0e0;
             font-size: 13px;
             font-family: 'Segoe UI', sans-serif;
         ">
             📰 <b style="color:#e94560">BREAKING</b> &nbsp;&nbsp;
             {_ticker_text}
-            &nbsp;&nbsp;&nbsp;&nbsp; 📰 <b style="color:#e94560">BREAKING</b> &nbsp;&nbsp;
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+            📰 <b style="color:#e94560">BREAKING</b> &nbsp;&nbsp;
             {_ticker_text}
         </div>
     </div>
