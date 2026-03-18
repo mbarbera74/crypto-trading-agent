@@ -1,3 +1,14 @@
+---
+title: Crypto Trading Agent
+emoji: 📈
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: "1.32.0"
+app_file: dashboard/app.py
+pinned: false
+---
+
 # 🤖 Crypto Trading Agent
 
 Agente di trading automatico per criptovalute con strategia **Momentum / Trend Following**, machine learning e dashboard interattiva.
