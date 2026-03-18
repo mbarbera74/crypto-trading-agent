@@ -26,3 +26,6 @@ ml/saved_models/
 # OS
 .DS_Store
 Thumbs.db
+*.jpeg
+*.jpg
+*.png
